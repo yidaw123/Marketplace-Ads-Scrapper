@@ -23,6 +23,10 @@
     </header>
 
     <!-- Clickable KPI Strip (Acts as Quick Intent Filters) -->
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+      <h2 style="font-size:0.95rem;font-weight:600;color:var(--text);">Section 1: Market Volume Summary &amp; Quick Intent Filters</h2>
+      <span style="font-size:0.76rem;color:var(--muted);">Click any card to filter the dashboard by post type</span>
+    </div>
     <div class="kpi-strip">
       <div class="kpi-card active" id="kpi-card-demand_only" onclick="quickSelectIntent('demand_only')">
         <div class="kpi-label">All Homeowner Demand</div>
@@ -55,7 +59,7 @@
     <div class="card" style="margin-bottom: 18px;">
       <div class="trend-header">
         <div class="trend-title-block">
-          <h2>Homeowner Demand Trend &amp; Seasonality by Trade Category</h2>
+          <h2>Chart 1: Homeowner Demand Trend &amp; Seasonality by Trade Category</h2>
           <p id="trend-subtitle">Toggle trade categories below to compare demand across timeframes or seasonal monthly cycles</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -90,7 +94,7 @@
       <div class="trend-header">
         <div class="trend-title-block">
           <h2 style="display:flex;align-items:center;">
-            Pricing Benchmarks &amp; Task Category Breakdown
+            Table 1: Pricing Benchmarks &amp; Task Category Breakdown
             <span class="info-tooltip-wrap">
               <span class="info-icon" tabindex="0" aria-label="Pricing Benchmark Criteria">i</span>
               <span class="info-tooltip-box">
@@ -142,7 +146,7 @@
       <div class="trend-header">
         <div class="trend-title-block">
           <h2 style="display:flex;align-items:center;">
-            Market Opportunity: Demand vs. Competitor Supply Ratio
+            Chart 2: Market Opportunity &mdash; Demand vs. Competitor Supply Ratio
             <span class="info-tooltip-wrap">
               <span class="info-icon" tabindex="0" aria-label="Demand vs Supply Ratio Methodology">i</span>
               <span class="info-tooltip-box">
@@ -175,14 +179,14 @@
     <div class="grid-2" style="margin-bottom: 18px;">
       <div class="card">
         <div class="card-header">
-          <h2>Demand vs. Supply by Trade Category</h2>
+          <h2>Chart 3: Demand vs. Supply Volume by Trade Category</h2>
           <span style="font-size:0.76rem;color:var(--muted)">Click any row to filter &amp; drill into tasks</span>
         </div>
         <div class="card-body" id="category-chart"></div>
       </div>
       <div class="card">
         <div class="card-header">
-          <h2>Geographic &amp; Platform Breakdown</h2>
+          <h2>Chart 4: Geographic &amp; Platform Breakdown</h2>
           <span style="font-size:0.76rem;color:var(--muted)">Click any location or platform to filter posts</span>
         </div>
         <div class="card-body">
@@ -200,6 +204,10 @@
     <div id="view-leads">
       <!-- Labeled Filter Panel -->
       <div class="filter-panel">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.06);flex-wrap:wrap;gap:6px;">
+          <h2 style="font-size:0.95rem;font-weight:600;color:var(--text);">Section 2: Lead Explorer Search &amp; Filter Controls</h2>
+          <span style="font-size:0.76rem;color:var(--muted);">Filter Table 2 and export matching rows to CSV</span>
+        </div>
         <div class="filter-grid">
           <div class="field">
             <label for="filter-search">Keyword Search</label>
@@ -304,7 +312,7 @@
       <!-- Clean Leads Table -->
       <div class="card">
         <div class="card-header">
-          <h2>Categorized Leads & Market Signals</h2>
+          <h2>Table 2: Categorized Leads &amp; Market Signals</h2>
           <div id="results-count" style="font-size:0.82rem;color:var(--muted);font-weight:500;">0 matching posts</div>
         </div>
         <div class="table-wrap">
