@@ -330,10 +330,39 @@ function computeStaticTrends(snap, period, country, province, city_region, inten
   return { period: pNorm, buckets, series, totals, categories: cats };
 }
 
+let localBridgeAvailable = null;
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 1500) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchJsonWithFallback(url, fallbackFn) {
+  if (isStaticHost()) {
+    if (localBridgeAvailable !== false) {
+      try {
+        const resp = await fetchWithTimeout(`http://127.0.0.1:8765${url}`, {}, 900);
+        const ctype = resp.headers.get("content-type") || "";
+        if (!resp.ok || !ctype.includes("application/json")) throw new Error(`HTTP ${resp.status}`);
+        localBridgeAvailable = true;
+        return await resp.json();
+      } catch (_e) {
+        localBridgeAvailable = false;
+      }
+    }
+    const snap = await ensureStaticSnapshot();
+    return fallbackFn(snap);
+  }
+
   try {
     const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const ctype = resp.headers.get("content-type") || "";
+    if (!resp.ok || !ctype.includes("application/json")) throw new Error(`HTTP ${resp.status}`);
     return await resp.json();
   } catch (_e) {
     const snap = await ensureStaticSnapshot();
@@ -1752,46 +1781,254 @@ function handleExportCsv(evt) {
   }, 150);
 }
 
+function classifyPostClientSide(post) {
+  const title = String(post.title || "").trim();
+  const body = String(post.body || "").trim();
+  const combined = `${title} ${body}`.toLowerCase();
+  const src = String(post.source_detail || "").toLowerCase();
+
+  const catRules = [
+    ["Plumbing & Drain", ["plumber", "plumbing", "drain", "clog", "toilet", "faucet", "sink", "leak", "pipe", "water heater", "sump pump", "sewer"], "Pipe Leak & Valve Repair"],
+    ["Electrical & Lighting", ["electrician", "electrical", "outlet", "breaker", "panel", "light fixture", "ceiling fan", "wiring", "switch", "dimmer", "gfci"], "Outlet, Switch & Dimmer Repair"],
+    ["Yardwork & Landscaping", ["landscaping", "lawn", "yardwork", "yard work", "mowing", "weeding", "mulch", "tree trimming", "snow removal", "patio", "sprinkler"], "Lawn Mowing & Yard Cleanup"],
+    ["Painting & Drywall", ["drywall", "sheetrock", "painter", "painting", "spackle", "mudding", "plaster", "wallpaper", "patch hole"], "Drywall Patching & Wall Repair"],
+    ["Carpentry, Doors & Windows", ["carpenter", "carpentry", "door", "window", "fence", "deck", "porch", "baseboard", "trim", "cabinet", "hinge", "lock"], "Door, Lock & Hinge Repair"],
+    ["Mounting & Furniture Assembly", ["mount tv", "tv mount", "ikea", "wayfair", "assemble", "assembly", "shelves", "curtain rod", "blinds"], "IKEA & Furniture Assembly"],
+    ["Roofing, Siding & Gutters", ["roof", "roofer", "shingle", "gutter", "downspout", "siding", "chimney", "skylight", "pressure wash"], "Gutter Cleaning & Downspouts"],
+    ["Flooring & Tile", ["tile", "tiling", "grout", "hardwood", "laminate", "lvp", "flooring", "carpet", "countertop"], "Tile, Grout & Backsplash"],
+    ["Appliance & HVAC Repair", ["hvac", "furnace", "ac unit", "air conditioner", "dishwasher", "washer", "dryer", "fridge", "refrigerator", "oven", "stove", "thermostat"], "AC, Furnace & Thermostat (HVAC)"],
+    ["General Handyman & Odd Jobs", ["handyman", "handy man", "odd jobs", "punch list", "home repair", "maintenance", "junk removal"], "Punch List & Multi-Task Repairs"],
+  ];
+
+  let primary_category = "General Handyman & Odd Jobs";
+  let sub_service = "Punch List & Multi-Task Repairs";
+  let bestScore = 0;
+  catRules.forEach(([cat, kws, defSub]) => {
+    let sc = 0;
+    kws.forEach(kw => {
+      if (combined.includes(kw)) sc += title.toLowerCase().includes(kw) ? 3 : 1;
+    });
+    if (sc > bestScore) {
+      bestScore = sc;
+      primary_category = cat;
+      sub_service = defSub;
+    }
+  });
+
+  const subMap = (staticSnapshot && staticSnapshot.sub_services_map) ? staticSnapshot.sub_services_map : {};
+  const candidateSubs = subMap[primary_category] || [];
+  for (const sName of candidateSubs) {
+    const words = sName.toLowerCase().split(/[\s,&/]+/).filter(w => w.length > 3);
+    if (words.some(w => combined.includes(w))) {
+      sub_service = sName;
+      break;
+    }
+  }
+
+  let intent_type = "diy_help_needed";
+  let intent_score = 62;
+  if (/\b(looking for|need a|anyone recommend|recommendations for|hiring|quote for|seeking)\b/i.test(combined)) {
+    intent_type = "customer_hiring";
+    intent_score = 82;
+  } else if (post.platform !== "stackexchange" && bestScore < 1) {
+    intent_type = "irrelevant";
+    intent_score = 15;
+  } else if (src.includes("homeimprovement") || src.includes("diy") || src.includes("plumbing") || post.platform === "stackexchange") {
+    intent_type = "diy_help_needed";
+    intent_score = 70;
+  }
+
+  let urgency = "low";
+  if (/\b(urgent|asap|emergency|immediately|today|tonight|flooding|burst|active leak|no power|sparking)\b/i.test(combined)) {
+    urgency = "high";
+    if (intent_type !== "irrelevant") intent_score = Math.min(99, intent_score + 6);
+  } else if (title.includes("?") || intent_type === "customer_hiring") {
+    urgency = "medium";
+  }
+
+  let price_mention = "";
+  let price_value = 0;
+  let price_type = "";
+  const hrM = combined.match(/\$\s?(\d{2,3})\s?(?:\/hr|per hour|an hour|hr\b)/i);
+  if (hrM) {
+    const v = Number(hrM[1]);
+    if (v >= 25 && v <= 250) {
+      price_mention = hrM[0];
+      price_value = v;
+      price_type = "hourly";
+    }
+  } else {
+    const flM = combined.match(/\$\s?(\d[\d,]*)/);
+    if (flM) {
+      const v = Number(flM[1].replace(/,/g, ""));
+      if (v >= 45 && v <= 5000) {
+        price_mention = flM[0];
+        price_value = v;
+        price_type = "flat";
+      }
+    }
+  }
+
+  return {
+    ...post,
+    intent_type,
+    intent_score,
+    primary_category,
+    sub_service,
+    urgency,
+    price_mention,
+    price_value,
+    price_type,
+    classified_by: "browser_live",
+  };
+}
+
+async function runBrowserLiveScrape() {
+  await ensureStaticSnapshot(true);
+  const fetchedRaw = [];
+  const nowIso = new Date().toISOString();
+
+  const tasks = [];
+
+  // 1. DIY StackExchange public CORS API
+  tasks.push(
+    fetchWithTimeout("https://api.stackexchange.com/2.3/questions?order=desc&sort=creation&site=diy&filter=withbody&pagesize=25", {}, 8000)
+      .then(r => r.json())
+      .then(data => {
+        (data.items || []).forEach(q => {
+          const cleanBody = String(q.body || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 600);
+          fetchedRaw.push({
+            external_id: `se_${q.question_id}`,
+            platform: "stackexchange",
+            source_detail: "diy.stackexchange.com",
+            country: "National",
+            province: "",
+            city_region: "National / DIY Forums",
+            neighborhood: (q.tags || []).slice(0, 3).join(", "),
+            title: q.title || "",
+            body: cleanBody,
+            url: q.link || "",
+            author: (q.owner && q.owner.display_name) || "se_user",
+            posted_at: q.creation_date ? new Date(q.creation_date * 1000).toISOString() : nowIso,
+          });
+        });
+      })
+      .catch(() => {})
+  );
+
+  // 2. Reddit public feeds (national DIY + top local subs)
+  const redditFeeds = [
+    { sub: "HomeImprovement", country: "National", province: "", city_region: "National / DIY Forums" },
+    { sub: "DIY", country: "National", province: "", city_region: "National / DIY Forums" },
+    { sub: "Plumbing", country: "National", province: "", city_region: "National / DIY Forums" },
+    { sub: "askTO", country: "Canada", province: "Ontario", city_region: "Toronto / GTA, ON" },
+    { sub: "Austin", country: "United States", province: "Texas", city_region: "Austin, TX" },
+    { sub: "AskNYC", country: "United States", province: "New York", city_region: "New York City, NY" },
+    { sub: "bayarea", country: "United States", province: "California", city_region: "SF Bay Area, CA" },
+  ];
+  redditFeeds.forEach(feed => {
+    tasks.push(
+      fetchWithTimeout(`https://www.reddit.com/r/${feed.sub}/new.json?limit=15`, {}, 6000)
+        .then(r => r.json())
+        .then(data => {
+          const children = (data.data && data.data.children) ? data.data.children : [];
+          children.forEach(c => {
+            const p = c.data;
+            if (!p || !p.id || !p.title) return;
+            fetchedRaw.push({
+              external_id: `rd_${p.id}`,
+              platform: "reddit",
+              source_detail: `r/${feed.sub}`,
+              country: feed.country,
+              province: feed.province,
+              city_region: feed.city_region,
+              neighborhood: "",
+              title: p.title,
+              body: String(p.selftext || "").slice(0, 800),
+              url: p.permalink ? `https://www.reddit.com${p.permalink}` : (p.url || ""),
+              author: p.author || "reddit_user",
+              posted_at: p.created_utc ? new Date(p.created_utc * 1000).toISOString() : nowIso,
+            });
+          });
+        })
+        .catch(() => {})
+    );
+  });
+
+  await Promise.allSettled(tasks);
+
+  const snap = staticSnapshot || { posts: [] };
+  const existingIds = new Set((snap.posts || []).map(p => p.external_id));
+  const newlyAdded = [];
+  let demandLeads = 0;
+
+  fetchedRaw.forEach(raw => {
+    const classified = classifyPostClientSide(raw);
+    if (classified.intent_type === "irrelevant") return;
+    if (classified.intent_type === "customer_hiring" || classified.intent_type === "diy_help_needed") {
+      demandLeads++;
+    }
+    if (!existingIds.has(classified.external_id)) {
+      existingIds.add(classified.external_id);
+      newlyAdded.push(classified);
+    }
+  });
+
+  snap.posts = [...newlyAdded, ...(snap.posts || [])];
+  staticSnapshot = snap;
+
+  return {
+    total_fetched: fetchedRaw.length,
+    new_stored: newlyAdded.length,
+    demand_leads_found: demandLeads,
+  };
+}
+
+async function isBackendReachable(apiBase) {
+  if (!apiBase) return true;
+  try {
+    const resp = await fetchWithTimeout(`${apiBase}/api/settings`, {}, 900);
+    const ctype = resp.headers.get("content-type") || "";
+    const ok = resp.ok && ctype.includes("application/json");
+    if (isStaticHost()) localBridgeAvailable = ok;
+    return ok;
+  } catch (_e) {
+    if (isStaticHost()) localBridgeAvailable = false;
+    return false;
+  }
+}
+
 async function triggerScrape() {
   const btn = document.getElementById("scrape-btn");
   btn.disabled = true;
   btn.textContent = "Scraping...";
   try {
-    if (isStaticHost()) {
-      await ensureStaticSnapshot(true);
-      await loadDashboard();
-      const totalArchived = (staticSnapshot && staticSnapshot.posts) ? staticSnapshot.posts.length : 0;
-      if (confirm(
-        `Synced latest cloud dataset (${totalArchived} archived posts).\n\n` +
-        `Note: yidaw123.github.io is hosted on static GitHub Pages, so full multi-platform scrapes run on GitHub Actions (automatically at 10 AM & 9 PM EST) or locally on http://localhost:8765.\n\n` +
-        `Click OK to open GitHub Actions and trigger a cloud scrape now, or Cancel to stay here.`
-      )) {
-        window.open("https://github.com/yidaw123/market-place-web-scrapper-analysis/actions/workflows/daily_scrape.yml", "_blank", "noopener");
+    const apiBase = isStaticHost() ? "http://127.0.0.1:8765" : "";
+    let usedBackend = false;
+    let res = null;
+
+    if (await isBackendReachable(apiBase)) {
+      try {
+        const resp = await fetchWithTimeout(`${apiBase}/api/scrape`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ platforms: ["reddit", "craigslist", "kijiji", "stackexchange", "51ca"], include_national_reddit: true }),
+        }, 120000);
+        const ctype = resp.headers.get("content-type") || "";
+        if (ctype.includes("application/json")) {
+          res = await resp.json();
+          if (!resp.ok) throw new Error(res.error || `HTTP ${resp.status}`);
+          usedBackend = true;
+        }
+      } catch (_bridgeErr) {
+        usedBackend = false;
       }
-      return;
     }
 
-    const resp = await fetch("/api/scrape", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ platforms: ["reddit", "craigslist", "kijiji", "stackexchange", "51ca"], include_national_reddit: true }),
-    });
-    const ctype = resp.headers.get("content-type") || "";
-    if (!ctype.includes("application/json")) {
-      await ensureStaticSnapshot(true);
-      await loadDashboard();
-      const totalArchived = (staticSnapshot && staticSnapshot.posts) ? staticSnapshot.posts.length : 0;
-      if (confirm(
-        `Synced latest cloud dataset (${totalArchived} archived posts).\n\n` +
-        `Note: Live multi-platform scraping requires the local Python server (http://localhost:8765) or GitHub Actions.\n\n` +
-        `Click OK to open GitHub Actions and trigger a cloud scrape now, or Cancel to stay here.`
-      )) {
-        window.open("https://github.com/yidaw123/market-place-web-scrapper-analysis/actions/workflows/daily_scrape.yml", "_blank", "noopener");
-      }
-      return;
+    if (!usedBackend) {
+      res = await runBrowserLiveScrape();
     }
-    const res = await resp.json();
-    if (!resp.ok) throw new Error(res.error || `HTTP ${resp.status}`);
+
     await loadDashboard();
     alert(`Scrape complete! Fetched ${res.total_fetched} posts (${res.new_stored} new stored, ${res.demand_leads_found} demand leads).`);
   } catch (e) {
@@ -1803,24 +2040,22 @@ async function triggerScrape() {
 }
 
 async function triggerReclassify() {
-  if (isStaticHost()) {
-    await ensureStaticSnapshot(true);
-    await loadDashboard();
-    alert("Refreshed latest classified cloud dataset. (To re-run custom classifier rules over the SQLite database, use http://localhost:8765.)");
-    return;
-  }
   if (!confirm("Re-run classification on all stored posts with the latest rules (and LLM, if configured)?")) return;
-  const resp = await fetch("/api/reclassify", { method: "POST" });
-  const ctype = resp.headers.get("content-type") || "";
-  if (!ctype.includes("application/json")) {
+  const apiBase = isStaticHost() ? "http://127.0.0.1:8765" : "";
+  try {
+    if (!(await isBackendReachable(apiBase))) throw new Error("No local backend");
+    const resp = await fetchWithTimeout(`${apiBase}/api/reclassify`, { method: "POST" }, 15000);
+    const ctype = resp.headers.get("content-type") || "";
+    if (!resp.ok || !ctype.includes("application/json")) throw new Error("No local backend");
+    const res = await resp.json();
+    await loadDashboard();
+    alert(`Reclassified ${res.count} posts.`);
+  } catch (_e) {
     await ensureStaticSnapshot(true);
     await loadDashboard();
-    alert("Refreshed latest classified cloud dataset. (To re-run custom classifier rules over the SQLite database, use http://localhost:8765.)");
-    return;
+    const cnt = (staticSnapshot && staticSnapshot.posts) ? staticSnapshot.posts.length : 0;
+    alert(`Refreshed latest classified cloud dataset (${cnt} posts).`);
   }
-  const res = await resp.json();
-  await loadDashboard();
-  alert(`Reclassified ${res.count} posts.`);
 }
 
 function openSettingsModal() {
@@ -1858,30 +2093,27 @@ async function saveSettings() {
   const geminiKey = document.getElementById("settings-gemini-key").value.trim();
   const openaiKey = document.getElementById("settings-openai-key").value.trim();
 
-  if (isStaticHost()) {
+  const apiBase = isStaticHost() ? "http://127.0.0.1:8765" : "";
+  if (await isBackendReachable(apiBase)) {
+    await fetchWithTimeout(`${apiBase}/api/settings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        regions: currentSettings.regions,
+        search_keywords: keywords,
+        national_subreddits: subs,
+        llm_config: {
+          provider,
+          gemini_api_key: geminiKey,
+          openai_api_key: openaiKey,
+          enable_llm_enrichment: true,
+        },
+      }),
+    }, 5000);
+  } else {
     currentSettings.search_keywords = keywords;
     currentSettings.national_subreddits = subs;
-    closeSettingsModal();
-    await loadDashboard();
-    alert("Updated settings for this browser session. (To persist backend scrape settings, save on http://localhost:8765.)");
-    return;
   }
-
-  await fetch("/api/settings", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      regions: currentSettings.regions,
-      search_keywords: keywords,
-      national_subreddits: subs,
-      llm_config: {
-        provider,
-        gemini_api_key: geminiKey,
-        openai_api_key: openaiKey,
-        enable_llm_enrichment: true,
-      },
-    }),
-  });
   closeSettingsModal();
   await loadDashboard();
 }
