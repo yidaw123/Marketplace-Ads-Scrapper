@@ -224,7 +224,7 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  overflow: hidden;
+  overflow: visible;
 }
 .card-header {
   padding: 14px 18px;
@@ -630,6 +630,8 @@ tbody tr:hover td { background: rgba(255, 255, 255, 0.02); }
   font-weight: 700;
   font-style: italic;
   font-family: Georgia, serif;
+  text-transform: none;
+  letter-spacing: normal;
   cursor: help;
   user-select: none;
   transition: all 0.15s ease;
@@ -656,10 +658,16 @@ tbody tr:hover td { background: rgba(255, 255, 255, 0.02); }
   font-size: 0.77rem;
   font-weight: 400;
   line-height: 1.45;
+  text-transform: none;
+  letter-spacing: normal;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
   z-index: 50;
   pointer-events: none;
   transition: opacity 0.15s ease, visibility 0.15s ease;
+}
+.info-tooltip-box.tooltip-right {
+  left: auto;
+  right: 0;
 }
 .info-tooltip-wrap:hover .info-tooltip-box,
 .info-icon:focus + .info-tooltip-box {
@@ -752,4 +760,134 @@ tbody tr:hover td { background: rgba(255, 255, 255, 0.02); }
   background: rgba(248, 250, 252, 0.65);
   z-index: 2;
   pointer-events: none;
+}
+
+/* Searchable Dropdown Component */
+.sselect-wrap {
+  position: relative;
+  width: 100%;
+  min-width: 160px;
+}
+.trend-header .sselect-wrap {
+  width: auto;
+  min-width: 240px;
+}
+button.sselect-trigger,
+.sselect-trigger {
+  width: 100%;
+  background: var(--surface-subtle);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 8px 11px;
+  border-radius: 7px;
+  font-size: 0.84rem;
+  font-family: inherit;
+  font-weight: 400;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  text-align: left;
+  outline: none;
+  transition: border-color 0.14s ease;
+}
+button.sselect-trigger:hover,
+button.sselect-trigger:focus,
+.sselect-trigger:hover,
+.sselect-trigger:focus,
+.sselect-wrap.open .sselect-trigger {
+  border-color: var(--primary);
+  background: var(--surface-subtle);
+}
+.sselect-trigger-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.sselect-arrow {
+  font-size: 0.68rem;
+  color: var(--muted);
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+.sselect-wrap.open .sselect-arrow {
+  transform: rotate(180deg);
+}
+.sselect-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 220px;
+  background: #0f172a;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+  z-index: 60;
+  overflow: hidden;
+}
+.sselect-wrap.open .sselect-menu {
+  display: block;
+}
+.sselect-search-wrap {
+  padding: 7px 8px;
+  border-bottom: 1px solid rgba(71, 85, 105, 0.5);
+  background: #0f172a;
+}
+.field .sselect-search,
+.sselect-search {
+  width: 100%;
+  background: #1e293b;
+  color: var(--text);
+  border: 1px solid #334155;
+  padding: 6px 9px;
+  border-radius: 5px;
+  font-size: 0.79rem;
+  outline: none;
+}
+.field .sselect-search:focus,
+.sselect-search:focus {
+  border-color: var(--primary);
+}
+.sselect-options {
+  max-height: 250px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.sselect-option {
+  padding: 7px 11px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.sselect-option:hover {
+  background: var(--surface-hover);
+  color: #fff;
+}
+.sselect-option.active {
+  background: rgba(59, 130, 246, 0.18);
+  color: #93c5fd;
+  font-weight: 600;
+}
+.sselect-divider {
+  padding: 6px 11px 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  border-top: 1px solid rgba(71, 85, 105, 0.55);
+  margin-top: 4px;
+  pointer-events: none;
+  user-select: none;
+}
+.sselect-empty {
+  padding: 10px 11px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-align: center;
 }

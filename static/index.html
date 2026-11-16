@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Handyman Market Research & Lead Explorer</title>
-  <link rel="stylesheet" href="./static/styles.css?v=14" />
+  <link rel="stylesheet" href="./static/styles.css?v=16" />
 </head>
 <body>
   <div class="container">
@@ -207,7 +207,7 @@
           <div class="field">
             <label for="filter-region">City</label>
             <select id="filter-region" onchange="onCityChange()">
-              <option value="all">All Cities</option>
+              <option value="all">Select a Province / State first</option>
             </select>
           </div>
           <div class="field">
@@ -248,11 +248,25 @@
             </select>
           </div>
           <div class="field">
-            <label for="filter-urgency">Urgency</label>
+            <label for="filter-urgency" style="display:flex;align-items:center;">
+              Urgency
+              <span class="info-tooltip-wrap">
+                <span class="info-icon" tabindex="0" aria-label="How Urgency is Determined">i</span>
+                <span class="info-tooltip-box tooltip-right">
+                  <strong>How Post Urgency is Determined</strong>
+                  <ul class="info-tooltip-list">
+                    <li><strong>High / Urgent:</strong> Post title or body contains immediate/emergency keywords (<em>urgent, ASAP, emergency, immediately, today, tonight, this weekend, flooding, burst, active leak, no power, sparking, broken window, move out tomorrow</em>). Also boosts lead intent score (+6).</li>
+                    <li><strong>Normal (Medium):</strong> Active service request with hiring phrases (<em>looking for, need a pro, quote, estimate</em>), a Craigslist Labor Gig, or a direct troubleshooting question (<code>?</code>) without emergency keywords.</li>
+                    <li><strong>Low / Routine:</strong> General non-time-sensitive posts, routine project discussions, or contractor supply ads.</li>
+                  </ul>
+                </span>
+              </span>
+            </label>
             <select id="filter-urgency" onchange="loadPosts()">
               <option value="all">Any Urgency</option>
               <option value="high">High / Urgent</option>
               <option value="medium">Normal</option>
+              <option value="low">Low / Routine</option>
             </select>
           </div>
           <div class="field">
@@ -336,6 +350,6 @@
     </div>
   </div>
 
-  <script src="./static/app.js?v=15"></script>
+  <script src="./static/app.js?v=16"></script>
 </body>
 </html>

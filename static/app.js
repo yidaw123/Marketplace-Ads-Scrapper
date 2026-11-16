@@ -64,8 +64,10 @@ function quickSelectIntent(intentVal) {
     document.getElementById("filter-category").value = "all";
     const subSel = document.getElementById("filter-sub-service");
     if (subSel) subSel.value = "all";
+    updateSubServiceOptions();
   }
   syncActiveKpiCard(intentVal);
+  if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
   loadTrends();
   loadPosts();
 }
@@ -680,6 +682,7 @@ function setPricingSourceFilter(source) {
     else if (selectedPricingSource === "supply") intentEl.value = "service_provider_ad";
     else intentEl.value = "hiring_and_supply";
     syncActiveKpiCard(intentEl.value);
+    if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
     loadTrends();
     loadPosts();
   }
@@ -698,6 +701,7 @@ function onPricingTradeSelect(trade) {
     updateSubServiceOptions();
     loadPosts();
   }
+  if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
   renderPricingAndTaskBreakdown();
   renderDemandSupplyRatioChart();
 }
@@ -1052,7 +1056,7 @@ function renderRegionBars(regions, channels) {
 function populateFilterDropdowns(sumRes) {
   const catSel = document.getElementById("filter-category");
   const currentCat = catSel.value || "all";
-  const cats = sumRes.categories_list || [];
+  const cats = [...(sumRes.categories_list || [])].sort((a, b) => a.localeCompare(b));
   catSel.innerHTML = `<option value="all">All Trade Categories</option>` +
     cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
   catSel.value = currentCat;
@@ -1066,6 +1070,7 @@ function populateFilterDropdowns(sumRes) {
 
   updateSubServiceOptions();
   updateProvinceAndCityOptions();
+  if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
 }
 
 function updateSubServiceOptions() {
@@ -1085,11 +1090,13 @@ function updateSubServiceOptions() {
       });
     });
   }
+  tasks.sort((a, b) => a.localeCompare(b));
 
   const label = cat !== "all" ? `All Task Categories in ${cat}` : "All Task Categories";
   subSel.innerHTML = `<option value="all">${esc(label)}</option>` +
     tasks.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join("");
   subSel.value = tasks.includes(prevSub) ? prevSub : "all";
+  if (typeof syncSearchableSelect === "function") syncSearchableSelect("filter-sub-service");
 }
 
 function updateProvinceAndCityOptions() {
@@ -1100,32 +1107,47 @@ function updateProvinceAndCityOptions() {
   const prevCity = regSel.value || "all";
 
   const allRegions = (currentSettings && currentSettings.regions) ? currentSettings.regions : [];
-  const matchingCountryRegs = allRegions.filter(r => country === "all" || r.country === country);
+  const caProvs = [...new Set(allRegions.filter(r => r.country === "Canada" && r.province).map(r => r.province))]
+    .sort((a, b) => a.localeCompare(b));
+  const usStates = [...new Set(allRegions.filter(r => r.country === "United States" && r.province).map(r => r.province))]
+    .sort((a, b) => a.localeCompare(b));
 
-  const provinces = [...new Set(matchingCountryRegs.map(r => r.province).filter(Boolean))];
-  const provLabel = country === "Canada"
-    ? "All Provinces"
-    : country === "United States"
-    ? "All States"
-    : "All Provinces / States";
+  let provOptionsHtml = "";
+  let validProvs = [];
+  if (country === "Canada") {
+    validProvs = caProvs;
+    provOptionsHtml = `<option value="all">All Canadian Provinces</option>` +
+      caProvs.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
+  } else if (country === "United States") {
+    validProvs = usStates;
+    provOptionsHtml = `<option value="all">All US States</option>` +
+      usStates.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
+  } else {
+    validProvs = [...caProvs, ...usStates];
+    provOptionsHtml = `<option value="all">All Provinces / States</option>` +
+      `<option disabled value="__sep_ca__">── Canadian Provinces ──</option>` +
+      caProvs.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join("") +
+      `<option disabled value="__sep_us__">── US States ──</option>` +
+      usStates.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
+  }
 
-  provSel.innerHTML = `<option value="all">${provLabel}</option>` +
-    provinces.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
-  provSel.value = provinces.includes(prevProv) ? prevProv : "all";
+  provSel.innerHTML = provOptionsHtml;
+  provSel.value = validProvs.includes(prevProv) ? prevProv : "all";
 
   const activeProv = provSel.value;
-  const matchingCityRegs = matchingCountryRegs.filter(r => activeProv === "all" || r.province === activeProv);
-  const cities = [...new Set(matchingCityRegs.map(r => r.name))];
-
-  const cityLabel = activeProv !== "all"
-    ? `All in ${activeProv}`
-    : country === "Canada"
-    ? "All Canadian Cities"
-    : "All Cities";
-
-  regSel.innerHTML = `<option value="all">${esc(cityLabel)}</option>` +
-    cities.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
-  regSel.value = cities.includes(prevCity) ? prevCity : "all";
+  if (activeProv === "all") {
+    regSel.innerHTML = `<option value="all">Select a Province / State first</option>`;
+    regSel.value = "all";
+  } else {
+    const matchingCityRegs = allRegions.filter(
+      r => (country === "all" || country === "National" || r.country === country) && r.province === activeProv
+    );
+    const cities = [...new Set(matchingCityRegs.map(r => r.name))].sort((a, b) => a.localeCompare(b));
+    regSel.innerHTML = `<option value="all">${esc(`All in ${activeProv}`)}</option>` +
+      cities.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+    regSel.value = cities.includes(prevCity) ? prevCity : "all";
+  }
+  if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
 }
 
 async function onCountryChange() {
@@ -1175,6 +1197,7 @@ function filterByCategory(cat) {
     renderTrendChart();
     onPricingTradeSelect(cat);
   }
+  if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
   switchTab("leads");
   loadPosts();
 }
@@ -1184,6 +1207,7 @@ function filterBySubService(cat, sub) {
   updateSubServiceOptions();
   const subSel = document.getElementById("filter-sub-service");
   if (subSel) subSel.value = sub;
+  if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
   switchTab("leads");
   loadPosts();
 }
@@ -1198,6 +1222,7 @@ async function filterByRegion(reg) {
     updateProvinceAndCityOptions();
   }
   document.getElementById("filter-region").value = reg;
+  if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
   switchTab("leads");
   await refreshSummaryForGeo();
   await loadPosts();
@@ -1311,6 +1336,7 @@ async function resetFilters() {
   syncActiveKpiCard("demand_only");
   updateSubServiceOptions();
   updateProvinceAndCityOptions();
+  if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
   await refreshSummaryForGeo();
   await loadPosts();
 }
@@ -1520,4 +1546,168 @@ async function saveSettings() {
   await loadDashboard();
 }
 
-window.addEventListener("DOMContentLoaded", loadDashboard);
+const SEARCHABLE_SELECT_IDS = [
+  "pricing-trade-select",
+  "filter-country",
+  "filter-province",
+  "filter-region",
+  "filter-category",
+  "filter-sub-service",
+  "filter-platform",
+  "filter-intent",
+  "filter-urgency",
+  "filter-sort",
+];
+
+function closeAllSearchableSelects(exceptWrap = null) {
+  document.querySelectorAll(".sselect-wrap.open").forEach(w => {
+    if (w !== exceptWrap) w.classList.remove("open");
+  });
+}
+
+function filterSearchableWrapOptions(wrap, query) {
+  const q = (query || "").trim().toLowerCase();
+  let visibleCount = 0;
+  wrap.querySelectorAll(".sselect-option").forEach(el => {
+    const match = !q || el.textContent.toLowerCase().includes(q);
+    el.style.display = match ? "" : "none";
+    if (match) visibleCount++;
+  });
+  wrap.querySelectorAll(".sselect-divider").forEach(el => {
+    el.style.display = q ? "none" : "";
+  });
+  const emptyEl = wrap.querySelector(".sselect-empty");
+  if (emptyEl) emptyEl.style.display = visibleCount === 0 ? "block" : "none";
+}
+
+function syncSearchableSelect(selectId) {
+  const selectEl = document.getElementById(selectId);
+  const wrap = document.getElementById(`sselect-${selectId}`);
+  if (!selectEl || !wrap) return;
+
+  const triggerTextEl = wrap.querySelector(".sselect-trigger-text");
+  const optionsBox = wrap.querySelector(".sselect-options");
+  const searchInput = wrap.querySelector(".sselect-search");
+
+  const opts = Array.from(selectEl.options);
+  const selectedOpt = opts.find(o => o.value === selectEl.value && !o.disabled) || opts.find(o => !o.disabled) || opts[0];
+  if (triggerTextEl) {
+    triggerTextEl.textContent = selectedOpt ? selectedOpt.text : "";
+  }
+
+  if (optionsBox) {
+    optionsBox.innerHTML = opts.map(opt => {
+      if (opt.disabled) {
+        return `<div class="sselect-divider">${esc(opt.text)}</div>`;
+      }
+      const isActive = opt.value === selectEl.value;
+      return `<div class="sselect-option${isActive ? " active" : ""}" data-val="${esc(opt.value)}">${esc(opt.text)}</div>`;
+    }).join("") + `<div class="sselect-empty" style="display:none;">No matching options</div>`;
+  }
+
+  if (searchInput) {
+    filterSearchableWrapOptions(wrap, searchInput.value);
+  }
+}
+
+function syncAllSearchableSelects() {
+  SEARCHABLE_SELECT_IDS.forEach(syncSearchableSelect);
+}
+
+function initSearchableSelects() {
+  SEARCHABLE_SELECT_IDS.forEach(id => {
+    const selectEl = document.getElementById(id);
+    if (!selectEl || selectEl.dataset.sselectInit === "1") return;
+    selectEl.dataset.sselectInit = "1";
+    selectEl.style.display = "none";
+
+    const wrap = document.createElement("div");
+    wrap.className = "sselect-wrap";
+    wrap.id = `sselect-${id}`;
+    wrap.innerHTML = `
+      <button type="button" class="sselect-trigger" aria-haspopup="listbox">
+        <span class="sselect-trigger-text"></span>
+        <span class="sselect-arrow">&#9662;</span>
+      </button>
+      <div class="sselect-menu">
+        <div class="sselect-search-wrap">
+          <input type="text" class="sselect-search" placeholder="Search options..." autocomplete="off" />
+        </div>
+        <div class="sselect-options" role="listbox"></div>
+      </div>
+    `;
+    selectEl.parentNode.insertBefore(wrap, selectEl.nextSibling);
+
+    const triggerBtn = wrap.querySelector(".sselect-trigger");
+    const searchInput = wrap.querySelector(".sselect-search");
+    const optionsBox = wrap.querySelector(".sselect-options");
+
+    triggerBtn.addEventListener("click", evt => {
+      evt.stopPropagation();
+      const wasOpen = wrap.classList.contains("open");
+      closeAllSearchableSelects(wrap);
+      if (wasOpen) {
+        wrap.classList.remove("open");
+      } else {
+        wrap.classList.add("open");
+        if (searchInput) {
+          searchInput.value = "";
+          filterSearchableWrapOptions(wrap, "");
+          setTimeout(() => searchInput.focus(), 10);
+        }
+      }
+    });
+
+    searchInput.addEventListener("click", evt => evt.stopPropagation());
+    searchInput.addEventListener("input", () => {
+      filterSearchableWrapOptions(wrap, searchInput.value);
+    });
+    searchInput.addEventListener("keydown", evt => {
+      if (evt.key === "Escape") {
+        wrap.classList.remove("open");
+        triggerBtn.focus();
+      } else if (evt.key === "Enter") {
+        evt.preventDefault();
+        const firstVisible = Array.from(wrap.querySelectorAll(".sselect-option")).find(
+          el => el.style.display !== "none"
+        );
+        if (firstVisible) {
+          firstVisible.click();
+        }
+      }
+    });
+
+    optionsBox.addEventListener("click", evt => {
+      evt.stopPropagation();
+      const optEl = evt.target.closest(".sselect-option");
+      if (!optEl) return;
+      const newVal = optEl.getAttribute("data-val");
+      const changed = selectEl.value !== newVal;
+      selectEl.value = newVal;
+      wrap.classList.remove("open");
+      syncSearchableSelect(id);
+      if (changed) {
+        selectEl.dispatchEvent(new Event("change"));
+      }
+    });
+
+    syncSearchableSelect(id);
+  });
+
+  if (!window.__sselectGlobalBound) {
+    window.__sselectGlobalBound = true;
+    document.addEventListener("click", evt => {
+      if (!evt.target.closest(".sselect-wrap")) {
+        closeAllSearchableSelects();
+      }
+    });
+    document.addEventListener("keydown", evt => {
+      if (evt.key === "Escape") closeAllSearchableSelects();
+    });
+  }
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  initSearchableSelects();
+  loadDashboard();
+});
