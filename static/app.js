@@ -1478,7 +1478,6 @@ function getFilterQueryString() {
 
 async function loadPosts() {
   const qs = getFilterQueryString();
-  document.getElementById("export-btn").href = `/api/export.csv?${qs}`;
 
   const res = await fetchJsonWithFallback(`/api/posts?${qs}`, snap => {
     const plat = document.getElementById("filter-platform").value;
@@ -1719,33 +1718,38 @@ function _csvCell(val) {
 }
 
 function handleExportCsv(evt) {
-  if (!isStaticHost()) return;
   if (evt) evt.preventDefault();
+  const rows = allFilteredPosts || [];
+  if (!rows.length) {
+    alert("No matching posts to export with your current filters.");
+    return;
+  }
   const headers = [
     "ID", "Platform", "Source / Channel", "Country", "Province / State",
     "City / Region", "Neighborhood", "Intent Type", "Intent Score",
     "Trade Category", "Task Category", "Urgency", "Price Mention",
-    "Price Value", "Price Type", "Title", "URL", "Posted At",
+    "Price Value", "Price Type", "Title", "Description", "URL", "Posted At",
   ];
   const lines = [headers.map(_csvCell).join(",")];
-  (allFilteredPosts || []).forEach(p => {
+  rows.forEach(p => {
     lines.push([
       p.external_id, p.platform, p.source_detail, p.country, p.province,
       p.city_region, p.neighborhood, p.intent_type, p.intent_score,
       p.primary_category, p.sub_service, p.urgency, p.price_mention,
-      p.price_value, p.price_type, p.title, p.url, p.posted_at,
+      p.price_value, p.price_type, p.title, p.body, p.url, p.posted_at,
     ].map(_csvCell).join(","));
   });
   const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
+  a.href = url;
   a.download = "handyman_market_research_leads.csv";
   document.body.appendChild(a);
   a.click();
   setTimeout(() => {
-    URL.revokeObjectURL(a.href);
+    URL.revokeObjectURL(url);
     a.remove();
-  }, 100);
+  }, 150);
 }
 
 async function triggerScrape() {
