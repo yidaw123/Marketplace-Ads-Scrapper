@@ -18,7 +18,7 @@
         <button id="scrape-btn" onclick="triggerScrape()">Run Live Scrape</button>
         <button class="secondary" onclick="triggerReclassify()">Reclassify</button>
         <button class="secondary" onclick="openSettingsModal()">Settings</button>
-        <a id="export-btn" class="btn secondary" href="/api/export.csv">Export CSV</a>
+        <a id="export-btn" class="btn secondary" href="/api/export.csv" onclick="handleExportCsv(event)">Export CSV</a>
       </div>
     </header>
 
@@ -400,6 +400,6 @@
     </div>
   </div>
 
-  <script src="./static/app.js?v=20"></script>
+  <script src="./static/app.js?v=21"></script>
 </body>
 </html>

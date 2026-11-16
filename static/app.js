@@ -86,9 +86,14 @@ function onIntentDropdownChange() {
 
 let staticSnapshot = null;
 
-async function ensureStaticSnapshot() {
-  if (staticSnapshot) return staticSnapshot;
-  const resp = await fetch("./static/snapshot.json");
+function isStaticHost() {
+  return window.location.hostname.endsWith("github.io");
+}
+
+async function ensureStaticSnapshot(forceRefresh = false) {
+  if (staticSnapshot && !forceRefresh) return staticSnapshot;
+  const bust = forceRefresh ? `?t=${Date.now()}` : "";
+  const resp = await fetch(`./static/snapshot.json${bust}`);
   staticSnapshot = await resp.json();
   return staticSnapshot;
 }
@@ -1707,16 +1712,80 @@ function renderPostsPage() {
   }
 }
 
+function _csvCell(val) {
+  let s = String(val ?? "");
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
+function handleExportCsv(evt) {
+  if (!isStaticHost()) return;
+  if (evt) evt.preventDefault();
+  const headers = [
+    "ID", "Platform", "Source / Channel", "Country", "Province / State",
+    "City / Region", "Neighborhood", "Intent Type", "Intent Score",
+    "Trade Category", "Task Category", "Urgency", "Price Mention",
+    "Price Value", "Price Type", "Title", "URL", "Posted At",
+  ];
+  const lines = [headers.map(_csvCell).join(",")];
+  (allFilteredPosts || []).forEach(p => {
+    lines.push([
+      p.external_id, p.platform, p.source_detail, p.country, p.province,
+      p.city_region, p.neighborhood, p.intent_type, p.intent_score,
+      p.primary_category, p.sub_service, p.urgency, p.price_mention,
+      p.price_value, p.price_type, p.title, p.url, p.posted_at,
+    ].map(_csvCell).join(","));
+  });
+  const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "handyman_market_research_leads.csv";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(a.href);
+    a.remove();
+  }, 100);
+}
+
 async function triggerScrape() {
   const btn = document.getElementById("scrape-btn");
   btn.disabled = true;
   btn.textContent = "Scraping...";
   try {
+    if (isStaticHost()) {
+      await ensureStaticSnapshot(true);
+      await loadDashboard();
+      const totalArchived = (staticSnapshot && staticSnapshot.posts) ? staticSnapshot.posts.length : 0;
+      if (confirm(
+        `Synced latest cloud dataset (${totalArchived} archived posts).\n\n` +
+        `Note: yidaw123.github.io is hosted on static GitHub Pages, so full multi-platform scrapes run on GitHub Actions (automatically at 10 AM & 9 PM EST) or locally on http://localhost:8765.\n\n` +
+        `Click OK to open GitHub Actions and trigger a cloud scrape now, or Cancel to stay here.`
+      )) {
+        window.open("https://github.com/yidaw123/market-place-web-scrapper-analysis/actions/workflows/daily_scrape.yml", "_blank", "noopener");
+      }
+      return;
+    }
+
     const resp = await fetch("/api/scrape", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ platforms: ["reddit", "craigslist", "kijiji", "stackexchange", "51ca"], include_national_reddit: true }),
     });
+    const ctype = resp.headers.get("content-type") || "";
+    if (!ctype.includes("application/json")) {
+      await ensureStaticSnapshot(true);
+      await loadDashboard();
+      const totalArchived = (staticSnapshot && staticSnapshot.posts) ? staticSnapshot.posts.length : 0;
+      if (confirm(
+        `Synced latest cloud dataset (${totalArchived} archived posts).\n\n` +
+        `Note: Live multi-platform scraping requires the local Python server (http://localhost:8765) or GitHub Actions.\n\n` +
+        `Click OK to open GitHub Actions and trigger a cloud scrape now, or Cancel to stay here.`
+      )) {
+        window.open("https://github.com/yidaw123/market-place-web-scrapper-analysis/actions/workflows/daily_scrape.yml", "_blank", "noopener");
+      }
+      return;
+    }
     const res = await resp.json();
     if (!resp.ok) throw new Error(res.error || `HTTP ${resp.status}`);
     await loadDashboard();
@@ -1730,8 +1799,22 @@ async function triggerScrape() {
 }
 
 async function triggerReclassify() {
+  if (isStaticHost()) {
+    await ensureStaticSnapshot(true);
+    await loadDashboard();
+    alert("Refreshed latest classified cloud dataset. (To re-run custom classifier rules over the SQLite database, use http://localhost:8765.)");
+    return;
+  }
   if (!confirm("Re-run classification on all stored posts with the latest rules (and LLM, if configured)?")) return;
-  const res = await fetch("/api/reclassify", { method: "POST" }).then(r => r.json());
+  const resp = await fetch("/api/reclassify", { method: "POST" });
+  const ctype = resp.headers.get("content-type") || "";
+  if (!ctype.includes("application/json")) {
+    await ensureStaticSnapshot(true);
+    await loadDashboard();
+    alert("Refreshed latest classified cloud dataset. (To re-run custom classifier rules over the SQLite database, use http://localhost:8765.)");
+    return;
+  }
+  const res = await resp.json();
   await loadDashboard();
   alert(`Reclassified ${res.count} posts.`);
 }
@@ -1770,6 +1853,15 @@ async function saveSettings() {
   const provider = document.getElementById("settings-llm-provider").value;
   const geminiKey = document.getElementById("settings-gemini-key").value.trim();
   const openaiKey = document.getElementById("settings-openai-key").value.trim();
+
+  if (isStaticHost()) {
+    currentSettings.search_keywords = keywords;
+    currentSettings.national_subreddits = subs;
+    closeSettingsModal();
+    await loadDashboard();
+    alert("Updated settings for this browser session. (To persist backend scrape settings, save on http://localhost:8765.)");
+    return;
+  }
 
   await fetch("/api/settings", {
     method: "POST",
