@@ -658,18 +658,31 @@ function renderTrendPills() {
   const allSelected = allCats.every(c => activeWorkTypes.has(c));
   const keys = ["All Demand", ...allCats];
 
+  const activeIntent = document.getElementById("filter-intent")?.value || "demand_only";
+  const intentLabels = {
+    demand_only: "All Demand",
+    customer_hiring: "All Direct Hiring",
+    diy_help_needed: "All DIY Help",
+    service_provider_ad: "All Provider Ads",
+    hiring_and_supply: "All Hiring + Supply",
+    job_posting: "All Job Postings",
+    all: "All Posts",
+  };
+  const allPillLabel = intentLabels[activeIntent] || "All Demand";
+
   container.innerHTML = keys.map(k => {
     const isActive = k === "All Demand" ? allSelected : activeWorkTypes.has(k);
     const color = WORK_TYPE_COLORS[k] || "#60a5fa";
     const count = totals[k] || 0;
+    const displayName = k === "All Demand" ? allPillLabel : k;
     const borderStyle = isActive ? `border-color:${color};box-shadow:0 0 0 1px ${color}40;` : "";
     const tip = k === "All Demand"
-      ? "Click to toggle ALL job types on or off"
-      : "Click to toggle this job type on/off (double-click to solo)";
+      ? "Click to toggle ALL trade categories on or off"
+      : "Click to toggle this trade category on/off (double-click to solo)";
     return `
       <div class="work-pill ${isActive ? 'active' : ''}" style="${borderStyle}" data-wt="${esc(k)}" onclick="toggleWorkTypePill(this.dataset.wt)" ondblclick="soloWorkType(this.dataset.wt, event)" title="${tip}">
         <span class="work-pill-dot" style="background:${color};opacity:${isActive ? 1 : 0.35}"></span>
-        <span>${esc(k)}</span>
+        <span>${esc(displayName)}</span>
         <span class="work-pill-count">${count}</span>
       </div>
     `;
