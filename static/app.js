@@ -25,6 +25,10 @@ let activeWorkTypes = new Set(Object.keys(WORK_TYPE_COLORS));
 let allFilteredPosts = [];
 let currentPage = 1;
 let pageSize = 25;
+let regionPage = 1;
+const REGION_PAGE_SIZE = 6;
+let cachedRegionsList = [];
+let cachedChannelsList = [];
 
 function esc(str) {
   return String(str ?? "")
@@ -101,6 +105,7 @@ function computeStaticSummary(snap, country, province, city_region) {
   const priceCatMap = {};
   const regMap = {};
   const chMap = {};
+  const platMap = {};
 
   const addPrice = (bucket, p) => {
     if (p.intent_type === "job_posting" || p.intent_type === "irrelevant") return;
@@ -177,6 +182,13 @@ function computeStaticSummary(snap, country, province, city_region) {
       chMap[ch].demand_count++;
       if (p.intent_type === "customer_hiring") chMap[ch].direct_hiring++;
     }
+
+    const plat = p.platform || "other";
+    if (!platMap[plat]) platMap[plat] = { platform: plat, hiring_count: 0, diy_count: 0, provider_supply: 0, total: 0 };
+    if (p.intent_type === "customer_hiring") platMap[plat].hiring_count++;
+    else if (p.intent_type === "diy_help_needed") platMap[plat].diy_count++;
+    else if (p.intent_type === "service_provider_ad") platMap[plat].provider_supply++;
+    platMap[plat].total++;
   });
   return {
     kpis: {
@@ -193,6 +205,7 @@ function computeStaticSummary(snap, country, province, city_region) {
     sub_service_breakdown: Object.values(subMap).map(finalizePrice).sort((a, b) => b.total_demand - a.total_demand),
     pricing_by_category: Object.values(priceCatMap).map(finalizePrice),
     region_breakdown: Object.values(regMap).sort((a, b) => b.total_demand - a.total_demand),
+    platform_breakdown: Object.values(platMap).sort((a, b) => b.total - a.total),
     top_channels: Object.values(chMap).sort((a, b) => b.direct_hiring - a.direct_hiring || b.demand_count - a.demand_count).slice(0, 12),
   };
 }
@@ -1019,38 +1032,107 @@ function renderCategoryBars(cats) {
 }
 
 function renderRegionBars(regions, channels) {
-  const regEl = document.getElementById("region-chart");
-  const maxReg = Math.max(1, ...regions.map(r => (r.total_demand || 0) + (r.provider_supply || 0)));
+  cachedRegionsList = regions || [];
+  cachedChannelsList = channels || [];
+  regionPage = 1;
+  renderRegionPage();
+}
 
-  regEl.innerHTML = regions.map(r => {
-    const hiringPct = ((r.hiring_count || 0) / maxReg) * 100;
-    const diyPct = ((r.diy_count || 0) / maxReg) * 100;
-    const supPct = ((r.provider_supply || 0) / maxReg) * 100;
-    return `
-      <div class="bar-row" style="cursor:pointer" data-reg="${esc(r.city_region)}" onclick="filterByRegion(this.dataset.reg)">
-        <div class="bar-label">
-          <strong>${esc(r.city_region)}</strong>
-          <span style="color:var(--muted)">
-            <span style="color:#34d399">${r.hiring_count} Hiring</span> ·
-            <span style="color:#fbbf24">${r.diy_count} DIY</span> ·
-            <span style="color:#c084fc">${r.provider_supply} Supply</span>
-          </span>
+function goToRegionPage(page) {
+  const totalPages = Math.max(1, Math.ceil(cachedRegionsList.length / REGION_PAGE_SIZE));
+  regionPage = Math.max(1, Math.min(totalPages, page));
+  renderRegionPage();
+}
+
+function filterByPlatform(plat) {
+  const platSel = document.getElementById("filter-platform");
+  if (platSel) platSel.value = plat || "all";
+  if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
+  switchTab("leads");
+  loadPosts();
+}
+
+function renderRegionPage() {
+  const regEl = document.getElementById("region-chart");
+  const pagEl = document.getElementById("region-pagination");
+  if (!regEl) return;
+
+  if (!cachedRegionsList.length) {
+    regEl.innerHTML = `<p style="color:var(--muted)">No regional data yet.</p>`;
+    if (pagEl) pagEl.innerHTML = "";
+  } else {
+    const maxReg = Math.max(1, ...cachedRegionsList.map(r => (r.total_demand || 0) + (r.provider_supply || 0)));
+    const totalPages = Math.max(1, Math.ceil(cachedRegionsList.length / REGION_PAGE_SIZE));
+    if (regionPage > totalPages) regionPage = totalPages;
+
+    const startIdx = (regionPage - 1) * REGION_PAGE_SIZE;
+    const endIdx = Math.min(startIdx + REGION_PAGE_SIZE, cachedRegionsList.length);
+    const pageItems = cachedRegionsList.slice(startIdx, endIdx);
+
+    regEl.innerHTML = pageItems.map(r => {
+      const hiringPct = ((r.hiring_count || 0) / maxReg) * 100;
+      const diyPct = ((r.diy_count || 0) / maxReg) * 100;
+      const supPct = ((r.provider_supply || 0) / maxReg) * 100;
+      const displayName = r.city_region === "National / DIY Forums" ? "National / Online Platforms" : r.city_region;
+      return `
+        <div class="bar-row" style="cursor:pointer" data-reg="${esc(r.city_region)}" onclick="filterByRegion(this.dataset.reg)">
+          <div class="bar-label">
+            <strong>${esc(displayName)}</strong>
+            <span style="color:var(--muted)">
+              <span style="color:#34d399">${r.hiring_count} Hiring</span> ·
+              <span style="color:#fbbf24">${r.diy_count} DIY</span> ·
+              <span style="color:#c084fc">${r.provider_supply} Supply</span>
+            </span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill-hiring" style="width:${hiringPct}%"></div>
+            <div class="bar-fill-diy" style="width:${diyPct}%"></div>
+            <div class="bar-fill-supply" style="width:${supPct}%"></div>
+          </div>
         </div>
-        <div class="bar-track">
-          <div class="bar-fill-hiring" style="width:${hiringPct}%"></div>
-          <div class="bar-fill-diy" style="width:${diyPct}%"></div>
-          <div class="bar-fill-supply" style="width:${supPct}%"></div>
-        </div>
-      </div>
-    `;
-  }).join("");
+      `;
+    }).join("");
+
+    if (pagEl) {
+      if (cachedRegionsList.length > REGION_PAGE_SIZE) {
+        pagEl.innerHTML = `
+          <span>Showing ${startIdx + 1}-${endIdx} of ${cachedRegionsList.length} locations</span>
+          <div class="page-controls">
+            <button class="page-btn" onclick="goToRegionPage(${regionPage - 1})" ${regionPage <= 1 ? "disabled" : ""}>Prev</button>
+            <span style="padding:0 6px;font-weight:600;color:var(--text-secondary);">${regionPage} / ${totalPages}</span>
+            <button class="page-btn" onclick="goToRegionPage(${regionPage + 1})" ${regionPage >= totalPages ? "disabled" : ""}>Next</button>
+          </div>
+        `;
+      } else {
+        pagEl.innerHTML = "";
+      }
+    }
+  }
 
   const chEl = document.getElementById("top-channels-list");
-  chEl.innerHTML = channels.slice(0, 8).map(ch => `
-    <span class="badge b-cat" style="margin:3px 4px 3px 0; padding:5px 10px;">
-      ${esc(ch.source_detail)}: ${ch.demand_count}
-    </span>
-  `).join("");
+  if (chEl) {
+    const platNames = { reddit: "Reddit", craigslist: "Craigslist", kijiji: "Kijiji", stackexchange: "StackExchange" };
+    const platClasses = { reddit: "b-reddit", craigslist: "b-craigslist", kijiji: "b-kijiji", stackexchange: "b-stackexchange" };
+    const platforms = (summaryData && summaryData.platform_breakdown) ? summaryData.platform_breakdown : [];
+    const platHtml = [...platforms]
+      .sort((a, b) => (b.total || 0) - (a.total || 0))
+      .map(pl => {
+        const key = String(pl.platform || "").toLowerCase();
+        const label = platNames[key] || pl.platform;
+        const cls = platClasses[key] || "b-cat";
+        return `
+          <span class="badge ${cls}" style="cursor:pointer;margin:3px 5px 3px 0;padding:5px 10px;" data-plat="${esc(pl.platform)}" onclick="filterByPlatform(this.dataset.plat)" title="Filter leads table to ${esc(label)}">
+            ${esc(label)}: ${pl.total || 0}
+          </span>
+        `;
+      }).join("");
+    const channelsHtml = cachedChannelsList.slice(0, 6).map(ch => `
+      <span class="badge b-cat" style="margin:3px 4px 3px 0; padding:5px 10px;">
+        ${esc(ch.source_detail)}: ${ch.demand_count}
+      </span>
+    `).join("");
+    chEl.innerHTML = (platHtml ? `<div style="margin-bottom:6px;">${platHtml}</div>` : "") + channelsHtml;
+  }
 }
 
 function populateFilterDropdowns(sumRes) {
