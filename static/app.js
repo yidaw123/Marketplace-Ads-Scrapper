@@ -1017,14 +1017,6 @@ function formatOpportunityBadge(demandCount, supplyCount) {
   return `<span class="opp-badge opp-crowded" title="${d} demand vs ${s} supply ads (${ratioStr})">${ratioStr} &middot; Crowded</span>`;
 }
 
-function onPricingSortChange(sortVal) {
-  selectedPricingSort = sortVal || "demand_desc";
-  const sSel = document.getElementById("pricing-sort-select");
-  if (sSel && sSel.value !== selectedPricingSort) sSel.value = selectedPricingSort;
-  if (typeof syncSearchableSelect === "function") syncSearchableSelect("pricing-sort-select");
-  renderPricingAndTaskBreakdown();
-}
-
 function togglePricingColSort(colKey) {
   if (colKey === "task" || colKey === "trade") {
     selectedPricingSort = selectedPricingSort === "task_asc" ? "task_desc" : "task_asc";
@@ -1033,9 +1025,6 @@ function togglePricingColSort(colKey) {
     const ascKey = `${colKey}_asc`;
     selectedPricingSort = selectedPricingSort === descKey ? ascKey : descKey;
   }
-  const sSel = document.getElementById("pricing-sort-select");
-  if (sSel) sSel.value = selectedPricingSort;
-  if (typeof syncSearchableSelect === "function") syncSearchableSelect("pricing-sort-select");
   renderPricingAndTaskBreakdown();
 }
 
@@ -2321,7 +2310,6 @@ async function saveSettings() {
 }
 
 const SEARCHABLE_SELECT_IDS = [
-  "pricing-sort-select",
   "filter-country",
   "filter-province",
   "filter-region",

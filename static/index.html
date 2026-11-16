@@ -123,7 +123,7 @@
               </span>
             </span>
           </h2>
-          <p>Filtered by Chart 1's timeframe and trade category pills above &middot; Toggle Hiring vs. Supply Ads or sort columns below</p>
+          <p>Filtered by Chart 1's timeframe and trade category pills above &middot; Toggle Hiring vs. Supply Ads or click any column header to sort</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <div class="period-tabs" id="pricing-source-tabs" title="Filter pricing and task rows by Customer Hiring vs. Contractor Supply Ads">
@@ -131,21 +131,6 @@
             <button class="period-btn" data-source="hiring" onclick="setPricingSourceFilter('hiring')">Hiring Only</button>
             <button class="period-btn" data-source="supply" onclick="setPricingSourceFilter('supply')">Supply Ads Only</button>
           </div>
-          <select id="pricing-sort-select" class="page-size-select" style="padding:6px 12px;font-size:0.83rem;" onchange="onPricingSortChange(this.value)">
-            <option value="demand_desc">Sort: Demand Volume (High to Low)</option>
-            <option value="demand_asc">Sort: Demand Volume (Low to High)</option>
-            <option value="task_asc">Sort: Task Category (A to Z)</option>
-            <option value="task_desc">Sort: Task Category (Z to A)</option>
-            <option value="trade_asc">Sort: Trade Category (A to Z)</option>
-            <option value="hourly_desc">Sort: Avg Hourly Cost (High to Low)</option>
-            <option value="hourly_asc">Sort: Avg Hourly Cost (Low to High)</option>
-            <option value="flat_desc">Sort: Avg Flat Fee (High to Low)</option>
-            <option value="flat_asc">Sort: Avg Flat Fee (Low to High)</option>
-            <option value="ratio_desc">Sort: Demand : Supply Ratio (Highest)</option>
-            <option value="ratio_asc">Sort: Demand : Supply Ratio (Lowest)</option>
-            <option value="date_desc">Sort: Latest Date (Newest First)</option>
-            <option value="date_asc">Sort: Latest Date (Oldest First)</option>
-          </select>
         </div>
       </div>
       <div class="card-body" id="pricing-task-chart" style="padding:14px 18px;"></div>
@@ -410,6 +395,6 @@
     </div>
   </div>
 
-  <script src="./static/app.js?v=27"></script>
+  <script src="./static/app.js?v=28"></script>
 </body>
 </html>
