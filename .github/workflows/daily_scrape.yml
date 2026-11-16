@@ -1,8 +1,9 @@
-name: Daily Market Scrape & Datapoint Archive
+name: Twice-Daily Market Scrape & Datapoint Archive
 
 on:
   schedule:
-    - cron: '0 8 * * *'
+    - cron: '0 15 * * *' # Morning window: 10:00 AM EST / 7:00 AM PST
+    - cron: '0 4 * * *'  # Late-night window: 11:00 PM EST / 8:00 PM PST
   workflow_dispatch:
 
 permissions:
