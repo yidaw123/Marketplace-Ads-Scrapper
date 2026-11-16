@@ -222,7 +222,7 @@ function computeStaticSummary(snap, country, province, city_region, date_from, d
   };
 }
 
-function computeStaticTrends(snap, period, country, province, city_region, intent_type) {
+function computeStaticTrends(snap, period, country, province, city_region, intent_type, date_from, date_to) {
   const cats = snap.categories_list || Object.keys(WORK_TYPE_COLORS).filter(k => k !== "All Demand");
   const allKeys = ["All Demand", ...cats];
   const demandPosts = (snap.posts || []).filter(p => {
@@ -242,26 +242,111 @@ function computeStaticTrends(snap, period, country, province, city_region, inten
   });
 
   const monthAbbr = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  let maxDateStr = "2026-11-09";
+  const todayStr = new Date().toISOString().slice(0, 10);
+  let maxDateStr = "";
+  let minDateStr = "";
   demandPosts.forEach(p => {
     const d = String(p.posted_at || "").slice(0, 10);
-    if (d.length === 10 && d > maxDateStr) maxDateStr = d;
+    if (d.length === 10) {
+      if (!maxDateStr || d > maxDateStr) maxDateStr = d;
+      if (!minDateStr || d < minDateStr) minDateStr = d;
+    }
   });
+  if (!maxDateStr) maxDateStr = todayStr;
+  if (!minDateStr) minDateStr = maxDateStr;
+
   const maxDt = new Date(maxDateStr + "T00:00:00Z");
   const pNorm = (period || "1Y").toUpperCase();
   const buckets = [];
   const series = {};
 
-  if (pNorm === "SEASONALITY") {
-    for (let m = 1; m <= 12; m++) buckets.push({ key: String(m).padStart(2, "0"), label: monthAbbr[m - 1] });
-    allKeys.forEach(k => { series[k] = new Array(12).fill(0); });
+  if (pNorm === "YTD" || pNorm === "SEASONALITY") {
+    const endMonth = maxDt.getUTCMonth() + 1;
+    for (let m = 1; m <= endMonth; m++) buckets.push({ key: String(m).padStart(2, "0"), label: monthAbbr[m - 1] });
+    allKeys.forEach(k => { series[k] = new Array(endMonth).fill(0); });
     demandPosts.forEach(p => {
       const m = parseInt(String(p.posted_at || "").slice(5, 7), 10);
-      if (m >= 1 && m <= 12) {
+      if (m >= 1 && m <= endMonth) {
         series["All Demand"][m - 1]++;
         if (series[p.primary_category]) series[p.primary_category][m - 1]++;
       }
     });
+  } else if (pNorm === "CUSTOM") {
+    let sStr = (date_from && date_from.length >= 10) ? date_from.slice(0, 10) : minDateStr;
+    let eStr = (date_to && date_to.length >= 10) ? date_to.slice(0, 10) : todayStr;
+    if (sStr > eStr) {
+      const tmp = sStr;
+      sStr = eStr;
+      eStr = tmp;
+    }
+    const startDt = new Date(sStr + "T00:00:00Z");
+    const endDt = new Date(eStr + "T00:00:00Z");
+    const spanDays = Math.max(1, Math.floor((endDt.getTime() - startDt.getTime()) / 86400000) + 1);
+
+    if (spanDays <= 45) {
+      const keyIdx = {};
+      for (let i = 0; i < spanDays; i++) {
+        const d = new Date(startDt.getTime() + i * 86400000);
+        const k = d.toISOString().slice(0, 10);
+        keyIdx[k] = i;
+        buckets.push({ key: k, label: `${monthAbbr[d.getUTCMonth()]} ${String(d.getUTCDate()).padStart(2, "0")}` });
+      }
+      allKeys.forEach(k => { series[k] = new Array(spanDays).fill(0); });
+      demandPosts.forEach(p => {
+        const k = String(p.posted_at || "").slice(0, 10);
+        if (keyIdx[k] !== undefined) {
+          series["All Demand"][keyIdx[k]]++;
+          if (series[p.primary_category]) series[p.primary_category][keyIdx[k]]++;
+        }
+      });
+    } else if (spanDays <= 210) {
+      const numWeeks = Math.max(1, Math.ceil(spanDays / 7));
+      const startMs = startDt.getTime();
+      const endMs = endDt.getTime();
+      for (let w = 0; w < numWeeks; w++) {
+        const wEndMs = Math.min(endMs, startMs + (w * 7 + 6) * 86400000);
+        const wEnd = new Date(wEndMs);
+        buckets.push({ key: wEnd.toISOString().slice(0, 10), label: `${monthAbbr[wEnd.getUTCMonth()]} ${String(wEnd.getUTCDate()).padStart(2, "0")}` });
+      }
+      allKeys.forEach(k => { series[k] = new Array(numWeeks).fill(0); });
+      demandPosts.forEach(p => {
+        const dStr = String(p.posted_at || "").slice(0, 10);
+        if (dStr >= sStr && dStr <= eStr) {
+          const dtMs = new Date(dStr + "T00:00:00Z").getTime();
+          const wIdx = Math.min(numWeeks - 1, Math.floor((dtMs - startMs) / (7 * 86400000)));
+          if (wIdx >= 0) {
+            series["All Demand"][wIdx]++;
+            if (series[p.primary_category]) series[p.primary_category][wIdx]++;
+          }
+        }
+      });
+    } else {
+      let y = startDt.getUTCFullYear(), m = startDt.getUTCMonth() + 1;
+      const endY = endDt.getUTCFullYear(), endM = endDt.getUTCMonth() + 1;
+      const mList = [];
+      while (y < endY || (y === endY && m <= endM)) {
+        mList.push([y, m]);
+        m++;
+        if (m > 12) { m = 1; y++; }
+      }
+      const keyIdx = {};
+      mList.forEach(([yy, mm], idx) => {
+        const k = `${yy}-${String(mm).padStart(2, "0")}`;
+        keyIdx[k] = idx;
+        buckets.push({ key: k, label: `${monthAbbr[mm - 1]} '${String(yy).slice(2)}` });
+      });
+      allKeys.forEach(k => { series[k] = new Array(mList.length).fill(0); });
+      demandPosts.forEach(p => {
+        const dStr = String(p.posted_at || "").slice(0, 10);
+        if (dStr >= sStr && dStr <= eStr) {
+          const k = dStr.slice(0, 7);
+          if (keyIdx[k] !== undefined) {
+            series["All Demand"][keyIdx[k]]++;
+            if (series[p.primary_category]) series[p.primary_category][keyIdx[k]]++;
+          }
+        }
+      });
+    }
   } else if (pNorm === "7D" || pNorm === "1M") {
     const nDays = pNorm === "7D" ? 7 : 30;
     const keyIdx = {};
@@ -327,7 +412,16 @@ function computeStaticTrends(snap, period, country, province, city_region, inten
 
   const totals = {};
   allKeys.forEach(k => { totals[k] = (series[k] || []).reduce((a, b) => a + b, 0); });
-  return { period: pNorm, buckets, series, totals, categories: cats };
+  return {
+    period: pNorm,
+    buckets,
+    series,
+    totals,
+    categories: cats,
+    min_date: minDateStr,
+    max_date: todayStr,
+    latest_month_label: monthAbbr[maxDt.getUTCMonth()],
+  };
 }
 
 let localBridgeAvailable = null;
@@ -399,6 +493,13 @@ async function onDatePresetChange() {
   if (customRow) {
     customRow.style.display = preset === "custom" ? "grid" : "none";
   }
+  if (preset === "custom") {
+    const df = document.getElementById("filter-date-from");
+    const dt = document.getElementById("filter-date-to");
+    const fallbackToday = new Date().toISOString().slice(0, 10);
+    if (df && !df.value && trendData && trendData.min_date) df.value = trendData.min_date;
+    if (dt && !dt.value) dt.value = (trendData && trendData.max_date) ? trendData.max_date : fallbackToday;
+  }
   await refreshSummaryForGeo();
   await loadPosts();
 }
@@ -435,16 +536,37 @@ async function loadTrends() {
   const city = document.getElementById("filter-region").value || "all";
   const intentEl = document.getElementById("filter-intent");
   const intent_type = intentEl ? intentEl.value : "demand_only";
-  const qs = new URLSearchParams({
+  const tFromEl = document.getElementById("trend-date-from");
+  const tToEl = document.getElementById("trend-date-to");
+  const date_from = (currentTrendPeriod === "CUSTOM" && tFromEl) ? tFromEl.value : "";
+  const date_to = (currentTrendPeriod === "CUSTOM" && tToEl) ? tToEl.value : "";
+
+  const paramsObj = {
     period: currentTrendPeriod,
     country,
     province,
     city_region: city,
     intent_type,
-  }).toString();
+  };
+  if (date_from) paramsObj.date_from = date_from;
+  if (date_to) paramsObj.date_to = date_to;
+  const qs = new URLSearchParams(paramsObj).toString();
+
   trendData = await fetchJsonWithFallback(`/api/trends?${qs}`, snap =>
-    computeStaticTrends(snap, currentTrendPeriod, country, province, city, intent_type)
+    computeStaticTrends(snap, currentTrendPeriod, country, province, city, intent_type, date_from, date_to)
   );
+
+  const ytdBtn = document.getElementById("ytd-period-btn");
+  if (ytdBtn && trendData && trendData.latest_month_label) {
+    ytdBtn.textContent = `YTD (Jan-${trendData.latest_month_label})`;
+  }
+  if (trendData && trendData.min_date) {
+    if (tFromEl && !tFromEl.value) tFromEl.value = trendData.min_date;
+    if (tToEl && !tToEl.value) tToEl.value = trendData.max_date || new Date().toISOString().slice(0, 10);
+    const hintEl = document.getElementById("trend-custom-range-hint");
+    if (hintEl) hintEl.textContent = `(Data available from ${trendData.min_date} to ${trendData.max_date || new Date().toISOString().slice(0, 10)})`;
+  }
+
   renderTrendPills();
   renderTrendChart();
 }
@@ -462,7 +584,23 @@ function setTrendPeriod(period) {
   document.querySelectorAll("#trend-period-tabs .period-btn").forEach(btn => {
     btn.classList.toggle("active", btn.getAttribute("data-period") === period);
   });
+  const customBar = document.getElementById("trend-custom-bar");
+  if (customBar) {
+    customBar.style.display = period === "CUSTOM" ? "flex" : "none";
+  }
+  if (period === "CUSTOM" && trendData && trendData.min_date) {
+    const tFromEl = document.getElementById("trend-date-from");
+    const tToEl = document.getElementById("trend-date-to");
+    if (tFromEl && !tFromEl.value) tFromEl.value = trendData.min_date;
+    if (tToEl && !tToEl.value) tToEl.value = trendData.max_date || new Date().toISOString().slice(0, 10);
+  }
   loadTrends();
+}
+
+function onTrendCustomDateChange() {
+  if (currentTrendPeriod === "CUSTOM") {
+    loadTrends();
+  }
 }
 
 function getAllWorkCategories() {
@@ -580,8 +718,13 @@ function renderTrendChart() {
   });
 
   if (statsEl) {
-    const modeLabel = currentTrendPeriod === "SEASONALITY"
-      ? "Seasonal Monthly Aggregation (Jan - Dec)"
+    const latestMo = (trendData && trendData.latest_month_label) ? trendData.latest_month_label : "Nov";
+    const tFromVal = document.getElementById("trend-date-from")?.value || (trendData && trendData.min_date) || "";
+    const tToVal = document.getElementById("trend-date-to")?.value || (trendData && trendData.max_date) || "";
+    const modeLabel = (currentTrendPeriod === "YTD" || currentTrendPeriod === "SEASONALITY")
+      ? `Year-to-Date (Jan - ${latestMo})`
+      : currentTrendPeriod === "CUSTOM"
+      ? `Custom (${tFromVal} to ${tToVal})`
       : `Timeframe: ${currentTrendPeriod}`;
     const peakUnit = isShare ? `${peakVal}% share` : `${peakVal} posts`;
     statsEl.innerHTML = `

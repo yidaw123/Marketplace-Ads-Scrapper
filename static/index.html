@@ -74,9 +74,22 @@
             <button class="period-btn" data-period="6M" onclick="setTrendPeriod('6M')">6M</button>
             <button class="period-btn active" data-period="1Y" onclick="setTrendPeriod('1Y')">1Y</button>
             <button class="period-btn" data-period="ALL" onclick="setTrendPeriod('ALL')">ALL</button>
-            <button class="period-btn" data-period="SEASONALITY" onclick="setTrendPeriod('SEASONALITY')">Seasonality (Jan-Dec)</button>
+            <button class="period-btn" id="ytd-period-btn" data-period="YTD" onclick="setTrendPeriod('YTD')">YTD (Jan-Nov)</button>
+            <button class="period-btn" data-period="CUSTOM" onclick="setTrendPeriod('CUSTOM')">Custom</button>
           </div>
         </div>
+      </div>
+      <div id="trend-custom-bar" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 18px;background:rgba(15,23,42,0.45);border-bottom:1px solid rgba(51,65,85,0.55);font-size:0.8rem;">
+        <span style="color:var(--muted);font-weight:600;">Custom Range:</span>
+        <label style="display:inline-flex;align-items:center;gap:6px;color:var(--text-secondary);">
+          From
+          <input type="date" id="trend-date-from" style="background:#1e293b;color:var(--text);border:1px solid #334155;padding:5px 9px;border-radius:6px;font-size:0.8rem;" onchange="onTrendCustomDateChange()" />
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;color:var(--text-secondary);">
+          To
+          <input type="date" id="trend-date-to" style="background:#1e293b;color:var(--text);border:1px solid #334155;padding:5px 9px;border-radius:6px;font-size:0.8rem;" onchange="onTrendCustomDateChange()" />
+        </label>
+        <span id="trend-custom-range-hint" style="color:var(--muted);font-size:0.75rem;"></span>
       </div>
       <div class="work-type-pills" id="trend-work-pills"></div>
       <div class="trend-chart-wrap" id="trend-chart-wrap">
@@ -400,6 +413,6 @@
     </div>
   </div>
 
-  <script src="./static/app.js?v=24"></script>
+  <script src="./static/app.js?v=25"></script>
 </body>
 </html>

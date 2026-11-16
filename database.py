@@ -963,11 +963,13 @@ def get_demand_trends(
     city_region: Optional[str] = None,
     intent_type: Optional[str] = None,
     categories_list: Optional[List[str]] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Returns stock-market style time-series and seasonality demand data broken down
     by work category.
-    Supported periods: '7D', '1M', '3M', '6M', '1Y', 'ALL', 'SEASONALITY'
+    Supported periods: '7D', '1M', '3M', '6M', '1Y', 'ALL', 'YTD', 'SEASONALITY', 'CUSTOM'
     """
     conn = get_connection()
     cur = conn.cursor()
@@ -1018,6 +1020,7 @@ def get_demand_trends(
     # Parse dates safely
     parsed_rows = []
     max_dt: Optional[datetime] = None
+    min_dt: Optional[datetime] = None
     for r in rows:
         raw_dt = str(r["posted_at"] or "")[:19]
         if len(raw_dt) < 10:
@@ -1027,25 +1030,99 @@ def get_demand_trends(
             parsed_rows.append((dt, r["primary_category"]))
             if max_dt is None or dt > max_dt:
                 max_dt = dt
+            if min_dt is None or dt < min_dt:
+                min_dt = dt
         except ValueError:
             continue
 
+    today_dt = datetime.now(timezone.utc).replace(tzinfo=None)
     if max_dt is None:
-        max_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+        max_dt = today_dt
+    if min_dt is None:
+        min_dt = max_dt
 
     period_norm = (period or "1Y").upper()
     month_abbr = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
     buckets: List[Dict[str, str]] = []
-    if period_norm == "SEASONALITY":
-        for m_idx in range(1, 13):
+    if period_norm in ("YTD", "SEASONALITY"):
+        end_month = max_dt.month
+        for m_idx in range(1, end_month + 1):
             buckets.append({"key": f"{m_idx:02d}", "label": month_abbr[m_idx - 1]})
-        series = {k: [0] * 12 for k in all_series_keys}
+        series = {k: [0] * end_month for k in all_series_keys}
         for dt, cat in parsed_rows:
-            b_idx = dt.month - 1
-            series["All Demand"][b_idx] += 1
-            if cat in series:
-                series[cat][b_idx] += 1
+            if 1 <= dt.month <= end_month:
+                b_idx = dt.month - 1
+                series["All Demand"][b_idx] += 1
+                if cat in series:
+                    series[cat][b_idx] += 1
+    elif period_norm == "CUSTOM":
+        try:
+            start_dt = datetime.strptime(date_from.strip()[:10], "%Y-%m-%d") if (date_from and date_from.strip()) else min_dt
+        except ValueError:
+            start_dt = min_dt
+        try:
+            end_dt = datetime.strptime(date_to.strip()[:10], "%Y-%m-%d") if (date_to and date_to.strip()) else today_dt
+        except ValueError:
+            end_dt = today_dt
+        if start_dt > end_dt:
+            start_dt, end_dt = end_dt, start_dt
+
+        span_days = max(1, (end_dt - start_dt).days + 1)
+        if span_days <= 45:
+            key_to_idx: Dict[str, int] = {}
+            for i in range(span_days):
+                d = start_dt + timedelta(days=i)
+                k = d.strftime("%Y-%m-%d")
+                lbl = f"{month_abbr[d.month - 1]} {d.day:02d}"
+                key_to_idx[k] = i
+                buckets.append({"key": k, "label": lbl})
+            series = {k: [0] * span_days for k in all_series_keys}
+            for dt, cat in parsed_rows:
+                k = dt.strftime("%Y-%m-%d")
+                if k in key_to_idx:
+                    idx = key_to_idx[k]
+                    series["All Demand"][idx] += 1
+                    if cat in series:
+                        series[cat][idx] += 1
+        elif span_days <= 210:
+            num_weeks = max(1, (span_days + 6) // 7)
+            for w in range(num_weeks):
+                w_start = start_dt + timedelta(days=w * 7)
+                w_end = min(end_dt, w_start + timedelta(days=6))
+                lbl = f"{month_abbr[w_end.month - 1]} {w_end.day:02d}"
+                buckets.append({"key": w_end.strftime("%Y-%m-%d"), "label": lbl})
+            series = {k: [0] * num_weeks for k in all_series_keys}
+            for dt, cat in parsed_rows:
+                if start_dt <= dt <= end_dt:
+                    w_idx = min(num_weeks - 1, (dt - start_dt).days // 7)
+                    series["All Demand"][w_idx] += 1
+                    if cat in series:
+                        series[cat][w_idx] += 1
+        else:
+            key_to_idx = {}
+            y, m = start_dt.year, start_dt.month
+            month_list = []
+            while (y, m) <= (end_dt.year, end_dt.month):
+                month_list.append((y, m))
+                m += 1
+                if m > 12:
+                    m = 1
+                    y += 1
+            for idx, (yy, mm) in enumerate(month_list):
+                k = f"{yy:04d}-{mm:02d}"
+                lbl = f"{month_abbr[mm - 1]} '{str(yy)[2:]}"
+                key_to_idx[k] = idx
+                buckets.append({"key": k, "label": lbl})
+            series = {k: [0] * len(month_list) for k in all_series_keys}
+            for dt, cat in parsed_rows:
+                if start_dt <= dt <= end_dt:
+                    k = f"{dt.year:04d}-{dt.month:02d}"
+                    if k in key_to_idx:
+                        idx = key_to_idx[k]
+                        series["All Demand"][idx] += 1
+                        if cat in series:
+                            series[cat][idx] += 1
     elif period_norm in ("7D", "1M"):
         num_days = 7 if period_norm == "7D" else 30
         start_dt = max_dt - timedelta(days=num_days - 1)
@@ -1116,4 +1193,7 @@ def get_demand_trends(
         "series": series,
         "totals": totals,
         "categories": default_cats,
+        "min_date": min_dt.strftime("%Y-%m-%d"),
+        "max_date": today_dt.strftime("%Y-%m-%d"),
+        "latest_month_label": month_abbr[max_dt.month - 1],
     }

@@ -264,6 +264,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 city_region=qs.get("city_region", ["all"])[0],
                 intent_type=qs.get("intent_type", ["demand_only"])[0],
                 categories_list=list(SERVICE_CATEGORIES.keys()),
+                date_from=qs.get("date_from", [""])[0],
+                date_to=qs.get("date_to", [""])[0],
             )
             self._send_json(trends)
             return
