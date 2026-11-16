@@ -316,12 +316,16 @@ def detect_sub_service(primary_category: str, title: str, combined: str) -> str:
 def parse_price_details(price_mention: str, full_text: str) -> Tuple[float, str]:
     """
     Returns (price_value, price_type) where price_type is 'hourly', 'flat', or ''.
-    Filters out $0/$1 placeholder prices and unrealistic outliers.
+    Benchmark criteria:
+      - Hourly Rate ($/hr): $25/hr to $250/hr
+      - Flat Fee ($): $45 to $5,000
+      - Filters out $1-$20 classified price-bypass placeholders, dummy sequences ($123, $999), and <$45 hardware store part mentions.
     """
+    DUMMY_PRICES = {111.0, 123.0, 222.0, 333.0, 555.0, 777.0, 888.0, 999.0, 1111.0, 1234.0, 9999.0}
     text_to_scan = f"{price_mention} {full_text}"
-    # 1. Check explicit hourly rate first (e.g., "$35/hr", "$40 per hour", "$25 - $35/hr")
+    # 1. Check explicit hourly rate first (e.g., "$35/hr", "$40 per hour", "$25 - $35/hr", "$30/hora")
     hr_match = re.search(
-        r"\$\s?(\d{2,3}(?:\.\d{2})?)\s?(?:-\s?\$?\s?(\d{2,3}(?:\.\d{2})?))?\s?(?:/\s?h(?:ou)?r|per\s+h(?:ou)?r|an\s+h(?:ou)?r|hr\b)",
+        r"\$\s?(\d{2,3}(?:\.\d{2})?)\s?(?:-\s?\$?\s?(\d{2,3}(?:\.\d{2})?))?\s?(?:/\s?h(?:ou)?r|per\s+h(?:ou)?r|an\s+h(?:ou)?r|/\s?hora|por\s+hora|\bhr\b|\bhrly\b)",
         text_to_scan,
         flags=re.IGNORECASE,
     )
@@ -329,7 +333,7 @@ def parse_price_details(price_mention: str, full_text: str) -> Tuple[float, str]
         v1 = float(hr_match.group(1))
         v2 = float(hr_match.group(2)) if hr_match.group(2) else v1
         avg_hr = round((v1 + v2) / 2.0, 2)
-        if 15.0 <= avg_hr <= 250.0:
+        if 25.0 <= avg_hr <= 250.0 and avg_hr not in DUMMY_PRICES:
             return avg_hr, "hourly"
 
     if not price_mention:
@@ -341,7 +345,7 @@ def parse_price_details(price_mention: str, full_text: str) -> Tuple[float, str]
     for n in raw_nums:
         try:
             v = float(n.replace(",", ""))
-            if v > 1.0:
+            if v > 1.0 and v not in DUMMY_PRICES:
                 vals.append(v)
         except ValueError:
             pass
@@ -349,16 +353,16 @@ def parse_price_details(price_mention: str, full_text: str) -> Tuple[float, str]
         return 0.0, ""
 
     val = vals[0]
-    # If price_mention or nearby text indicates hourly and value is in hourly range (15..200)
+    # If price_mention or nearby text indicates hourly and value is in hourly range (25..250)
     if (
-        re.search(r"(/hr|per hour|an hour|hourly|\bhr\b)", price_mention, re.IGNORECASE)
-        or (15.0 <= val <= 95.0 and re.search(r"\b(per hour|an hour|/hr|hourly rate)\b", full_text, re.IGNORECASE))
+        re.search(r"(/hr|per hour|an hour|hourly|/hora|por hora|\bhr\b|\bhrly\b)", price_mention, re.IGNORECASE)
+        or (25.0 <= val <= 125.0 and re.search(r"\b(per hour|an hour|/hr|hourly rate|/hora|por hora)\b", full_text, re.IGNORECASE))
     ):
-        if 15.0 <= val <= 250.0:
+        if 25.0 <= val <= 250.0:
             return round(val, 2), "hourly"
 
-    # Flat job price range ($25 to $8,000)
-    if 25.0 <= val <= 8000.0:
+    # Flat job price benchmark range ($45 to $5,000)
+    if 45.0 <= val <= 5000.0:
         return round(val, 2), "flat"
     return 0.0, ""
 

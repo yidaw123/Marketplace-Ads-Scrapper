@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Handyman Market Research & Lead Explorer</title>
-  <link rel="stylesheet" href="./static/styles.css?v=12" />
+  <link rel="stylesheet" href="./static/styles.css?v=14" />
 </head>
 <body>
   <div class="container">
@@ -89,16 +89,71 @@
     <div class="card" style="margin-bottom: 18px;">
       <div class="trend-header">
         <div class="trend-title-block">
-          <h2>Pricing Benchmarks &amp; Task Category Breakdown</h2>
-          <p>Select a Trade Category to view its corresponding Task Categories, or select All Trade Categories to view all Task Categories</p>
+          <h2 style="display:flex;align-items:center;">
+            Pricing Benchmarks &amp; Task Category Breakdown
+            <span class="info-tooltip-wrap">
+              <span class="info-icon" tabindex="0" aria-label="Pricing Benchmark Criteria">i</span>
+              <span class="info-tooltip-box">
+                <strong>Pricing Benchmark Criteria &amp; Methodology</strong>
+                <ul class="info-tooltip-list">
+                  <li><strong>Hourly vs. Flat Fee Split:</strong> Hourly labor rates (<code>$/hr</code>) and fixed project budgets (<code>Flat $</code>) are calculated in separate buckets so hourly and flat-rate jobs are never mixed.</li>
+                  <li><strong>Employee Wages Excluded:</strong> Employer <em>Job Postings</em> (companies hiring hourly helpers/workers) are excluded so benchmarks reflect true <strong>Customer &amp; Contractor service pricing</strong>.</li>
+                  <li><strong>Price-Bypass &amp; Outlier Cutoffs:</strong>
+                    <br/>&bull; <strong>Hourly Rate:</strong> Counts <strong>$25/hr &ndash; $250/hr</strong> (ignores $1&ndash;$20 classified placeholders).
+                    <br/>&bull; <strong>Flat Fee:</strong> Counts <strong>$45 &ndash; $5,000</strong> (ignores $1&ndash;$40 classified bypass numbers, $123/$999 dummy values, and cheap hardware store part mentions).
+                  </li>
+                </ul>
+              </span>
+            </span>
+          </h2>
+          <p>Select a Trade Category to view its corresponding Task Categories, or filter by Hiring vs. Supply Ads</p>
         </div>
-        <div style="display:flex;gap:8px;align-items:center;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <div class="period-tabs" id="pricing-source-tabs" title="Filter pricing and task rows by Customer Hiring vs. Contractor Supply Ads">
+            <button class="period-btn active" data-source="all" onclick="setPricingSourceFilter('all')">All (Hiring + Supply)</button>
+            <button class="period-btn" data-source="hiring" onclick="setPricingSourceFilter('hiring')">Hiring Only</button>
+            <button class="period-btn" data-source="supply" onclick="setPricingSourceFilter('supply')">Supply Ads Only</button>
+          </div>
           <select id="pricing-trade-select" class="page-size-select" style="padding:6px 12px;font-size:0.83rem;" onchange="onPricingTradeSelect(this.value)">
             <option value="all">All Trade Categories (Show All Task Categories)</option>
           </select>
         </div>
       </div>
       <div class="card-body" id="pricing-task-chart" style="padding:14px 18px;"></div>
+    </div>
+
+    <!-- Market Opportunity: Demand vs. Competitor Supply Ratio Visualization -->
+    <div class="card" style="margin-bottom: 18px;">
+      <div class="trend-header">
+        <div class="trend-title-block">
+          <h2 style="display:flex;align-items:center;">
+            Market Opportunity: Demand vs. Competitor Supply Ratio
+            <span class="info-tooltip-wrap">
+              <span class="info-icon" tabindex="0" aria-label="Demand vs Supply Ratio Methodology">i</span>
+              <span class="info-tooltip-box">
+                <strong>How to Read the Demand : Supply Ratio</strong>
+                <ul class="info-tooltip-list">
+                  <li><strong>Demand (Green):</strong> Homeowners looking for help (<em>Direct Hiring</em> + <em>DIY Help</em>, or toggle to <em>Direct Hiring Only</em>).</li>
+                  <li><strong>Supply Ads (Purple):</strong> Plumbers, electricians, and handymen advertising their services.</li>
+                  <li><strong>Center Line (50% / 1:1 Ratio):</strong> When the green bar crosses past the center line, customer demand outweighs contractor supply ads (<strong>Underserved Opportunity</strong>).</li>
+                </ul>
+              </span>
+            </span>
+          </h2>
+          <p>Spot underserved trades and task categories where homeowner demand outpaces contractor supply ads</p>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <div class="period-tabs" id="ratio-level-tabs">
+            <button class="period-btn active" data-level="task" onclick="setRatioViewLevel('task')">Top Task Categories</button>
+            <button class="period-btn" data-level="trade" onclick="setRatioViewLevel('trade')">By Trade Category</button>
+          </div>
+          <div class="period-tabs" id="ratio-demand-tabs">
+            <button class="period-btn active" data-dtype="total" onclick="setRatioDemandType('total')">All Demand vs. Supply</button>
+            <button class="period-btn" data-dtype="hiring" onclick="setRatioDemandType('hiring')">Hiring Only vs. Supply</button>
+          </div>
+        </div>
+      </div>
+      <div class="card-body" id="demand-supply-ratio-chart" style="padding:14px 18px;"></div>
     </div>
 
     <!-- Category & Location Analytics Breakdown -->
@@ -184,9 +239,10 @@
             <label for="filter-intent">Post Type</label>
             <select id="filter-intent" onchange="onIntentDropdownChange()">
               <option value="demand_only">Homeowner Demand (Hiring + DIY)</option>
+              <option value="hiring_and_supply">Hiring + Supply Ads (Market Activity)</option>
               <option value="customer_hiring">Direct Hiring Only</option>
+              <option value="service_provider_ad">Provider Supply Ads Only</option>
               <option value="diy_help_needed">DIY Help Only</option>
-              <option value="service_provider_ad">Provider Ads</option>
               <option value="job_posting">Job Postings</option>
               <option value="all">All Posts</option>
             </select>
@@ -280,6 +336,6 @@
     </div>
   </div>
 
-  <script src="./static/app.js?v=13"></script>
+  <script src="./static/app.js?v=14"></script>
 </body>
 </html>

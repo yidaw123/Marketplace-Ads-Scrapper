@@ -607,6 +607,8 @@ def query_posts(
     if intent_type and intent_type != "all":
         if intent_type == "demand_only":
             clauses.append("intent_type IN ('customer_hiring', 'diy_help_needed')")
+        elif intent_type == "hiring_and_supply":
+            clauses.append("intent_type IN ('customer_hiring', 'service_provider_ad')")
         else:
             clauses.append("intent_type = ?")
             params.append(intent_type)
@@ -779,7 +781,8 @@ def get_analytics_summary(
     cur.execute("SELECT * FROM scrape_runs ORDER BY id DESC LIMIT 5")
     recent_runs = [dict(r) for r in cur.fetchall()]
 
-    # Sub-service (Specific Task) & Pricing breakdown
+    # Sub-service (Task Category) & Pricing breakdown
+    # Benchmark criteria: excludes job_posting (employee wages), Hourly $25-$250/hr, Flat Fee $45-$5,000
     cur.execute(
         f"""
         SELECT
@@ -789,14 +792,30 @@ def get_analytics_summary(
             SUM(CASE WHEN intent_type = 'diy_help_needed' THEN 1 ELSE 0 END) as diy_count,
             SUM(CASE WHEN intent_type IN ('customer_hiring', 'diy_help_needed') THEN 1 ELSE 0 END) as total_demand,
             SUM(CASE WHEN intent_type = 'service_provider_ad' THEN 1 ELSE 0 END) as provider_supply,
-            COUNT(CASE WHEN price_type = 'hourly' AND price_value > 0 THEN 1 END) as hourly_count,
-            ROUND(AVG(CASE WHEN price_type = 'hourly' AND price_value > 0 THEN price_value END), 0) as avg_hourly,
-            ROUND(MIN(CASE WHEN price_type = 'hourly' AND price_value > 0 THEN price_value END), 0) as min_hourly,
-            ROUND(MAX(CASE WHEN price_type = 'hourly' AND price_value > 0 THEN price_value END), 0) as max_hourly,
-            COUNT(CASE WHEN price_type = 'flat' AND price_value > 0 THEN 1 END) as flat_count,
-            ROUND(AVG(CASE WHEN price_type = 'flat' AND price_value > 0 THEN price_value END), 0) as avg_flat,
-            ROUND(MIN(CASE WHEN price_type = 'flat' AND price_value > 0 THEN price_value END), 0) as min_flat,
-            ROUND(MAX(CASE WHEN price_type = 'flat' AND price_value > 0 THEN price_value END), 0) as max_flat
+            COUNT(CASE WHEN intent_type != 'job_posting' AND price_type = 'hourly' AND price_value BETWEEN 25 AND 250 THEN 1 END) as hourly_count,
+            ROUND(AVG(CASE WHEN intent_type != 'job_posting' AND price_type = 'hourly' AND price_value BETWEEN 25 AND 250 THEN price_value END), 0) as avg_hourly,
+            ROUND(MIN(CASE WHEN intent_type != 'job_posting' AND price_type = 'hourly' AND price_value BETWEEN 25 AND 250 THEN price_value END), 0) as min_hourly,
+            ROUND(MAX(CASE WHEN intent_type != 'job_posting' AND price_type = 'hourly' AND price_value BETWEEN 25 AND 250 THEN price_value END), 0) as max_hourly,
+            COUNT(CASE WHEN intent_type != 'job_posting' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN 1 END) as flat_count,
+            ROUND(AVG(CASE WHEN intent_type != 'job_posting' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN price_value END), 0) as avg_flat,
+            ROUND(MIN(CASE WHEN intent_type != 'job_posting' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN price_value END), 0) as min_flat,
+            ROUND(MAX(CASE WHEN intent_type != 'job_posting' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN price_value END), 0) as max_flat,
+            COUNT(CASE WHEN intent_type = 'customer_hiring' AND price_type = 'hourly' AND price_value BETWEEN 25 AND 250 THEN 1 END) as hiring_hourly_count,
+            ROUND(AVG(CASE WHEN intent_type = 'customer_hiring' AND price_type = 'hourly' AND price_value BETWEEN 25 AND 250 THEN price_value END), 0) as hiring_avg_hourly,
+            ROUND(MIN(CASE WHEN intent_type = 'customer_hiring' AND price_type = 'hourly' AND price_value BETWEEN 25 AND 250 THEN price_value END), 0) as hiring_min_hourly,
+            ROUND(MAX(CASE WHEN intent_type = 'customer_hiring' AND price_type = 'hourly' AND price_value BETWEEN 25 AND 250 THEN price_value END), 0) as hiring_max_hourly,
+            COUNT(CASE WHEN intent_type = 'customer_hiring' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN 1 END) as hiring_flat_count,
+            ROUND(AVG(CASE WHEN intent_type = 'customer_hiring' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN price_value END), 0) as hiring_avg_flat,
+            ROUND(MIN(CASE WHEN intent_type = 'customer_hiring' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN price_value END), 0) as hiring_min_flat,
+            ROUND(MAX(CASE WHEN intent_type = 'customer_hiring' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN price_value END), 0) as hiring_max_flat,
+            COUNT(CASE WHEN intent_type = 'service_provider_ad' AND price_type = 'hourly' AND price_value BETWEEN 25 AND 250 THEN 1 END) as supply_hourly_count,
+            ROUND(AVG(CASE WHEN intent_type = 'service_provider_ad' AND price_type = 'hourly' AND price_value BETWEEN 25 AND 250 THEN price_value END), 0) as supply_avg_hourly,
+            ROUND(MIN(CASE WHEN intent_type = 'service_provider_ad' AND price_type = 'hourly' AND price_value BETWEEN 25 AND 250 THEN price_value END), 0) as supply_min_hourly,
+            ROUND(MAX(CASE WHEN intent_type = 'service_provider_ad' AND price_type = 'hourly' AND price_value BETWEEN 25 AND 250 THEN price_value END), 0) as supply_max_hourly,
+            COUNT(CASE WHEN intent_type = 'service_provider_ad' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN 1 END) as supply_flat_count,
+            ROUND(AVG(CASE WHEN intent_type = 'service_provider_ad' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN price_value END), 0) as supply_avg_flat,
+            ROUND(MIN(CASE WHEN intent_type = 'service_provider_ad' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN price_value END), 0) as supply_min_flat,
+            ROUND(MAX(CASE WHEN intent_type = 'service_provider_ad' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN price_value END), 0) as supply_max_flat
         FROM posts
         {where_not_irr}
         GROUP BY primary_category, sub_service
@@ -810,14 +829,14 @@ def get_analytics_summary(
         f"""
         SELECT
             primary_category,
-            COUNT(CASE WHEN price_type = 'hourly' AND price_value > 0 THEN 1 END) as hourly_count,
-            ROUND(AVG(CASE WHEN price_type = 'hourly' AND price_value > 0 THEN price_value END), 0) as avg_hourly,
-            ROUND(MIN(CASE WHEN price_type = 'hourly' AND price_value > 0 THEN price_value END), 0) as min_hourly,
-            ROUND(MAX(CASE WHEN price_type = 'hourly' AND price_value > 0 THEN price_value END), 0) as max_hourly,
-            COUNT(CASE WHEN price_type = 'flat' AND price_value > 0 THEN 1 END) as flat_count,
-            ROUND(AVG(CASE WHEN price_type = 'flat' AND price_value > 0 THEN price_value END), 0) as avg_flat,
-            ROUND(MIN(CASE WHEN price_type = 'flat' AND price_value > 0 THEN price_value END), 0) as min_flat,
-            ROUND(MAX(CASE WHEN price_type = 'flat' AND price_value > 0 THEN price_value END), 0) as max_flat
+            COUNT(CASE WHEN intent_type != 'job_posting' AND price_type = 'hourly' AND price_value BETWEEN 25 AND 250 THEN 1 END) as hourly_count,
+            ROUND(AVG(CASE WHEN intent_type != 'job_posting' AND price_type = 'hourly' AND price_value BETWEEN 25 AND 250 THEN price_value END), 0) as avg_hourly,
+            ROUND(MIN(CASE WHEN intent_type != 'job_posting' AND price_type = 'hourly' AND price_value BETWEEN 25 AND 250 THEN price_value END), 0) as min_hourly,
+            ROUND(MAX(CASE WHEN intent_type != 'job_posting' AND price_type = 'hourly' AND price_value BETWEEN 25 AND 250 THEN price_value END), 0) as max_hourly,
+            COUNT(CASE WHEN intent_type != 'job_posting' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN 1 END) as flat_count,
+            ROUND(AVG(CASE WHEN intent_type != 'job_posting' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN price_value END), 0) as avg_flat,
+            ROUND(MIN(CASE WHEN intent_type != 'job_posting' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN price_value END), 0) as min_flat,
+            ROUND(MAX(CASE WHEN intent_type != 'job_posting' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN price_value END), 0) as max_flat
         FROM posts
         {where_not_irr}
         GROUP BY primary_category
@@ -874,6 +893,8 @@ def get_demand_trends(
     params: List[Any] = []
     if not intent_type or intent_type == "demand_only":
         clauses.append("intent_type IN ('customer_hiring', 'diy_help_needed')")
+    elif intent_type == "hiring_and_supply":
+        clauses.append("intent_type IN ('customer_hiring', 'service_provider_ad')")
     elif intent_type == "all":
         clauses.append("intent_type != 'irrelevant'")
     else:

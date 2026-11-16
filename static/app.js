@@ -4,6 +4,9 @@ let trendData = null;
 let currentTrendPeriod = "1Y";
 let currentTrendMode = "count"; // 'count' or 'share'
 let selectedPricingTrade = "all";
+let selectedPricingSource = "all"; // 'all', 'hiring', 'supply'
+let ratioViewLevel = "task"; // 'task' or 'trade'
+let ratioDemandType = "total"; // 'total' or 'hiring'
 const WORK_TYPE_COLORS = {
   "All Demand": "#60a5fa",
   "Plumbing & Drain": "#38bdf8",
@@ -98,24 +101,41 @@ function computeStaticSummary(snap, country, province, city_region) {
   const chMap = {};
 
   const addPrice = (bucket, p) => {
+    if (p.intent_type === "job_posting" || p.intent_type === "irrelevant") return;
     const pv = Number(p.price_value || 0);
     if (pv <= 0) return;
-    if (p.price_type === "hourly") bucket.hrVals.push(pv);
-    else if (p.price_type === "flat") bucket.flatVals.push(pv);
+    if (p.price_type === "hourly" && pv >= 25 && pv <= 250) {
+      bucket.hrVals.push(pv);
+      if (p.intent_type === "customer_hiring") bucket.hiringHrVals.push(pv);
+      else if (p.intent_type === "service_provider_ad") bucket.supplyHrVals.push(pv);
+    } else if (p.price_type === "flat" && pv >= 45 && pv <= 5000) {
+      bucket.flatVals.push(pv);
+      if (p.intent_type === "customer_hiring") bucket.hiringFlatVals.push(pv);
+      else if (p.intent_type === "service_provider_ad") bucket.supplyFlatVals.push(pv);
+    }
   };
+  const calcStats = arr => ({
+    cnt: arr.length,
+    avg: arr.length ? Math.round(arr.reduce((a, x) => a + x, 0) / arr.length) : null,
+    min: arr.length ? Math.round(Math.min(...arr)) : null,
+    max: arr.length ? Math.round(Math.max(...arr)) : null,
+  });
   const finalizePrice = b => {
-    const hr = b.hrVals;
-    const fl = b.flatVals;
-    b.hourly_count = hr.length;
-    b.avg_hourly = hr.length ? Math.round(hr.reduce((a, x) => a + x, 0) / hr.length) : null;
-    b.min_hourly = hr.length ? Math.round(Math.min(...hr)) : null;
-    b.max_hourly = hr.length ? Math.round(Math.max(...hr)) : null;
-    b.flat_count = fl.length;
-    b.avg_flat = fl.length ? Math.round(fl.reduce((a, x) => a + x, 0) / fl.length) : null;
-    b.min_flat = fl.length ? Math.round(Math.min(...fl)) : null;
-    b.max_flat = fl.length ? Math.round(Math.max(...fl)) : null;
-    delete b.hrVals;
-    delete b.flatVals;
+    const hr = calcStats(b.hrVals || []);
+    const fl = calcStats(b.flatVals || []);
+    const hHr = calcStats(b.hiringHrVals || []);
+    const hFl = calcStats(b.hiringFlatVals || []);
+    const sHr = calcStats(b.supplyHrVals || []);
+    const sFl = calcStats(b.supplyFlatVals || []);
+    b.hourly_count = hr.cnt; b.avg_hourly = hr.avg; b.min_hourly = hr.min; b.max_hourly = hr.max;
+    b.flat_count = fl.cnt; b.avg_flat = fl.avg; b.min_flat = fl.min; b.max_flat = fl.max;
+    b.hiring_hourly_count = hHr.cnt; b.hiring_avg_hourly = hHr.avg; b.hiring_min_hourly = hHr.min; b.hiring_max_hourly = hHr.max;
+    b.hiring_flat_count = hFl.cnt; b.hiring_avg_flat = hFl.avg; b.hiring_min_flat = hFl.min; b.hiring_max_flat = hFl.max;
+    b.supply_hourly_count = sHr.cnt; b.supply_avg_hourly = sHr.avg; b.supply_min_hourly = sHr.min; b.supply_max_hourly = sHr.max;
+    b.supply_flat_count = sFl.cnt; b.supply_avg_flat = sFl.avg; b.supply_min_flat = sFl.min; b.supply_max_flat = sFl.max;
+    delete b.hrVals; delete b.flatVals;
+    delete b.hiringHrVals; delete b.hiringFlatVals;
+    delete b.supplyHrVals; delete b.supplyFlatVals;
     return b;
   };
 
@@ -133,11 +153,11 @@ function computeStaticSummary(snap, country, province, city_region) {
     else if (p.intent_type === "diy_help_needed") { catMap[c].diy_count++; catMap[c].total_demand++; }
     else if (p.intent_type === "service_provider_ad") catMap[c].provider_supply++;
 
-    if (!priceCatMap[c]) priceCatMap[c] = { primary_category: c, hrVals: [], flatVals: [] };
+    if (!priceCatMap[c]) priceCatMap[c] = { primary_category: c, hrVals: [], flatVals: [], hiringHrVals: [], hiringFlatVals: [], supplyHrVals: [], supplyFlatVals: [] };
     addPrice(priceCatMap[c], p);
 
     const sk = `${c}|||${sub}`;
-    if (!subMap[sk]) subMap[sk] = { primary_category: c, sub_service: sub, hiring_count: 0, diy_count: 0, total_demand: 0, provider_supply: 0, hrVals: [], flatVals: [] };
+    if (!subMap[sk]) subMap[sk] = { primary_category: c, sub_service: sub, hiring_count: 0, diy_count: 0, total_demand: 0, provider_supply: 0, hrVals: [], flatVals: [], hiringHrVals: [], hiringFlatVals: [], supplyHrVals: [], supplyFlatVals: [] };
     if (p.intent_type === "customer_hiring") { subMap[sk].hiring_count++; subMap[sk].total_demand++; }
     else if (p.intent_type === "diy_help_needed") { subMap[sk].diy_count++; subMap[sk].total_demand++; }
     else if (p.intent_type === "service_provider_ad") subMap[sk].provider_supply++;
@@ -181,6 +201,8 @@ function computeStaticTrends(snap, period, country, province, city_region, inten
   const demandPosts = (snap.posts || []).filter(p => {
     if (!intent_type || intent_type === "demand_only") {
       if (p.intent_type !== "customer_hiring" && p.intent_type !== "diy_help_needed") return false;
+    } else if (intent_type === "hiring_and_supply") {
+      if (p.intent_type !== "customer_hiring" && p.intent_type !== "service_provider_ad") return false;
     } else if (intent_type === "all") {
       if (p.intent_type === "irrelevant") return false;
     } else if (p.intent_type !== intent_type) {
@@ -304,6 +326,7 @@ async function refreshSummaryForGeo() {
   summaryData = sumRes;
   renderKPIs(sumRes.kpis);
   renderPricingAndTaskBreakdown();
+  renderDemandSupplyRatioChart();
   renderCategoryBars(sumRes.category_breakdown || []);
   renderRegionBars(sumRes.region_breakdown || [], sumRes.top_channels || []);
 }
@@ -646,6 +669,23 @@ function renderKPIs(kpis) {
   document.getElementById("kpi-jobs").textContent = kpis.job_postings || 0;
 }
 
+function setPricingSourceFilter(source) {
+  selectedPricingSource = source || "all";
+  document.querySelectorAll("#pricing-source-tabs .period-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.getAttribute("data-source") === selectedPricingSource);
+  });
+  const intentEl = document.getElementById("filter-intent");
+  if (intentEl) {
+    if (selectedPricingSource === "hiring") intentEl.value = "customer_hiring";
+    else if (selectedPricingSource === "supply") intentEl.value = "service_provider_ad";
+    else intentEl.value = "hiring_and_supply";
+    syncActiveKpiCard(intentEl.value);
+    loadTrends();
+    loadPosts();
+  }
+  renderPricingAndTaskBreakdown();
+}
+
 function onPricingTradeSelect(trade) {
   selectedPricingTrade = trade || "all";
   const sel = document.getElementById("pricing-trade-select");
@@ -659,6 +699,30 @@ function onPricingTradeSelect(trade) {
     loadPosts();
   }
   renderPricingAndTaskBreakdown();
+  renderDemandSupplyRatioChart();
+}
+
+function formatOpportunityBadge(demandCount, supplyCount) {
+  const d = Number(demandCount || 0);
+  const s = Number(supplyCount || 0);
+  if (d === 0 && s === 0) {
+    return `<span style="color:var(--muted);">—</span>`;
+  }
+  if (s === 0 && d > 0) {
+    return `<span class="opp-badge opp-underserved" title="${d} demand posts vs 0 supply ads">${d} : 0 &middot; Underserved</span>`;
+  }
+  if (d === 0 && s > 0) {
+    return `<span class="opp-badge opp-crowded" title="0 demand posts vs ${s} supply ads">0 : ${s} &middot; Supply Heavy</span>`;
+  }
+  const ratio = (d / s);
+  const ratioStr = ratio >= 10 ? `${Math.round(ratio)}:1` : `${ratio.toFixed(1)}:1`;
+  if (ratio >= 1.8) {
+    return `<span class="opp-badge opp-underserved" title="${d} demand vs ${s} supply ads (${ratioStr})">${ratioStr} &middot; High Demand</span>`;
+  }
+  if (ratio >= 0.8) {
+    return `<span class="opp-badge opp-balanced" title="${d} demand vs ${s} supply ads (${ratioStr})">${ratioStr} &middot; Balanced</span>`;
+  }
+  return `<span class="opp-badge opp-crowded" title="${d} demand vs ${s} supply ads (${ratioStr})">${ratioStr} &middot; Crowded</span>`;
 }
 
 function renderPricingAndTaskBreakdown() {
@@ -699,22 +763,48 @@ function renderPricingAndTaskBreakdown() {
     });
   });
 
-  allTaskRows.sort((a, b) => (b.total_demand || 0) - (a.total_demand || 0) || (b.provider_supply || 0) - (a.provider_supply || 0));
+  allTaskRows.sort((a, b) => {
+    if (selectedPricingSource === "hiring") return (b.hiring_count || 0) - (a.hiring_count || 0);
+    if (selectedPricingSource === "supply") return (b.provider_supply || 0) - (a.provider_supply || 0);
+    return (b.total_demand || 0) - (a.total_demand || 0) || (b.provider_supply || 0) - (a.provider_supply || 0);
+  });
+
+  const pickHr = r => {
+    if (selectedPricingSource === "hiring") {
+      return { avg: r.hiring_avg_hourly, min: r.hiring_min_hourly, max: r.hiring_max_hourly, cnt: r.hiring_hourly_count || 0 };
+    }
+    if (selectedPricingSource === "supply") {
+      return { avg: r.supply_avg_hourly, min: r.supply_min_hourly, max: r.supply_max_hourly, cnt: r.supply_hourly_count || 0 };
+    }
+    return { avg: r.avg_hourly, min: r.min_hourly, max: r.max_hourly, cnt: r.hourly_count || 0 };
+  };
+
+  const pickFlat = r => {
+    if (selectedPricingSource === "hiring") {
+      return { avg: r.hiring_avg_flat, min: r.hiring_min_flat, max: r.hiring_max_flat, cnt: r.hiring_flat_count || 0 };
+    }
+    if (selectedPricingSource === "supply") {
+      return { avg: r.supply_avg_flat, min: r.supply_min_flat, max: r.supply_max_flat, cnt: r.supply_flat_count || 0 };
+    }
+    return { avg: r.avg_flat, min: r.min_flat, max: r.max_flat, cnt: r.flat_count || 0 };
+  };
 
   const fmtHr = r => {
-    if (!r || !r.avg_hourly) return `<span style="color:var(--muted);">—</span>`;
-    const range = r.min_hourly && r.max_hourly && r.min_hourly !== r.max_hourly
-      ? `<span class="price-range-sub">($${r.min_hourly}–$${r.max_hourly}/hr · ${r.hourly_count})</span>`
-      : `<span class="price-range-sub">(${r.hourly_count} post${r.hourly_count > 1 ? "s" : ""})</span>`;
-    return `<span class="price-pill">$${r.avg_hourly}/hr avg</span>${range}`;
+    const p = pickHr(r);
+    if (!p.avg) return `<span style="color:var(--muted);">—</span>`;
+    const range = p.min && p.max && p.min !== p.max
+      ? `<span class="price-range-sub">($${p.min}–$${p.max}/hr · ${p.cnt})</span>`
+      : `<span class="price-range-sub">(${p.cnt} post${p.cnt > 1 ? "s" : ""})</span>`;
+    return `<span class="price-pill">$${p.avg}/hr avg</span>${range}`;
   };
 
   const fmtFlat = r => {
-    if (!r || !r.avg_flat) return `<span style="color:var(--muted);">—</span>`;
-    const range = r.min_flat && r.max_flat && r.min_flat !== r.max_flat
-      ? `<span class="price-range-sub">($${r.min_flat}–$${r.max_flat} · ${r.flat_count})</span>`
-      : `<span class="price-range-sub">(${r.flat_count} post${r.flat_count > 1 ? "s" : ""})</span>`;
-    return `<span class="price-pill price-pill-flat">$${r.avg_flat} avg</span>${range}`;
+    const p = pickFlat(r);
+    if (!p.avg) return `<span style="color:var(--muted);">—</span>`;
+    const range = p.min && p.max && p.min !== p.max
+      ? `<span class="price-range-sub">($${p.min}–$${p.max} · ${p.cnt})</span>`
+      : `<span class="price-range-sub">(${p.cnt} post${p.cnt > 1 ? "s" : ""})</span>`;
+    return `<span class="price-pill price-pill-flat">$${p.avg} avg</span>${range}`;
   };
 
   const tasks = selectedPricingTrade === "all"
@@ -732,6 +822,7 @@ function renderPricingAndTaskBreakdown() {
         <span style="color:#fbbf24;">${t.diy_count || 0} DIY</span> &middot;
         <span style="color:#c084fc;">${t.provider_supply || 0} Supply</span>
       </td>
+      <td>${formatOpportunityBadge(t.total_demand, t.provider_supply)}</td>
       <td>${fmtHr(t)}</td>
       <td>${fmtFlat(t)}</td>
       <td style="text-align:right;">
@@ -740,9 +831,15 @@ function renderPricingAndTaskBreakdown() {
     </tr>
   `).join("");
 
+  const sourceLabel = selectedPricingSource === "hiring"
+    ? "Customer Hiring Budgets Only"
+    : selectedPricingSource === "supply"
+    ? "Contractor Supply Ad Rates Only"
+    : "All Service Pricing (Hiring + Supply Ads)";
+
   const headerSubtitle = selectedPricingTrade === "all"
-    ? `Showing <strong>All Task Categories (${tasks.length})</strong> across all trades (select a Trade Category above to narrow, or click any row to filter posts below)`
-    : `Showing <strong>${tasks.length} Task Categories</strong> within <strong>${esc(selectedPricingTrade)}</strong> (click any row to filter posts below)`;
+    ? `Showing <strong>All Task Categories (${tasks.length})</strong> &middot; Pricing Source: <strong>${sourceLabel}</strong>`
+    : `Showing <strong>${tasks.length} Task Categories</strong> in <strong>${esc(selectedPricingTrade)}</strong> &middot; Pricing Source: <strong>${sourceLabel}</strong>`;
 
   container.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
@@ -757,13 +854,130 @@ function renderPricingAndTaskBreakdown() {
           <tr>
             <th>Task Category &amp; Trade</th>
             <th>Demand &amp; Supply Volume</th>
-            <th>Hourly Rate ($/hr)</th>
-            <th>Flat Job Price ($)</th>
+            <th>Demand : Supply Ratio</th>
+            <th>Hourly Cost ($/hr)</th>
+            <th>Flat Fee ($)</th>
             <th style="text-align:right;">Action</th>
           </tr>
         </thead>
-        <tbody>${rowsHtml || `<tr><td colspan="5" style="text-align:center;color:var(--muted);">No task categories found for this trade.</td></tr>`}</tbody>
+        <tbody>${rowsHtml || `<tr><td colspan="6" style="text-align:center;color:var(--muted);">No task categories found for this trade.</td></tr>`}</tbody>
       </table>
+    </div>
+  `;
+}
+
+function setRatioViewLevel(level) {
+  ratioViewLevel = level || "task";
+  document.querySelectorAll("#ratio-level-tabs .period-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.getAttribute("data-level") === ratioViewLevel);
+  });
+  renderDemandSupplyRatioChart();
+}
+
+function setRatioDemandType(dtype) {
+  ratioDemandType = dtype || "total";
+  document.querySelectorAll("#ratio-demand-tabs .period-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.getAttribute("data-dtype") === ratioDemandType);
+  });
+  renderDemandSupplyRatioChart();
+}
+
+function renderDemandSupplyRatioChart() {
+  const container = document.getElementById("demand-supply-ratio-chart");
+  if (!container || !summaryData) return;
+
+  const isHiringOnly = ratioDemandType === "hiring";
+  const demandLabel = isHiringOnly ? "Direct Hiring" : "Total Demand (Hiring + DIY)";
+
+  let items = [];
+  if (ratioViewLevel === "trade") {
+    items = (summaryData.category_breakdown || []).map(c => ({
+      title: c.primary_category,
+      subtitle: `${c.hiring_count || 0} Hiring · ${c.diy_count || 0} DIY`,
+      primary_category: c.primary_category,
+      sub_service: null,
+      demand: isHiringOnly ? (c.hiring_count || 0) : (c.total_demand || 0),
+      supply: c.provider_supply || 0,
+    }));
+  } else {
+    const rawSubs = summaryData.sub_service_breakdown || [];
+    const filteredSubs = selectedPricingTrade === "all"
+      ? rawSubs
+      : rawSubs.filter(s => s.primary_category === selectedPricingTrade);
+    items = filteredSubs.map(s => ({
+      title: s.sub_service,
+      subtitle: s.primary_category,
+      primary_category: s.primary_category,
+      sub_service: s.sub_service,
+      demand: isHiringOnly ? (s.hiring_count || 0) : (s.total_demand || 0),
+      supply: s.provider_supply || 0,
+    }));
+  }
+
+  // Filter out empty items and sort by highest opportunity (Demand - Supply gap & ratio)
+  items = items.filter(it => it.demand > 0 || it.supply > 0);
+  items.sort((a, b) => {
+    const scoreA = (a.demand + 1) / (a.supply + 1) * Math.log2(a.demand + 2);
+    const scoreB = (b.demand + 1) / (b.supply + 1) * Math.log2(b.demand + 2);
+    return scoreB - scoreA;
+  });
+
+  const displayItems = ratioViewLevel === "task" && selectedPricingTrade === "all"
+    ? items.slice(0, 14)
+    : items;
+
+  if (!displayItems.length) {
+    container.innerHTML = `<p style="color:var(--muted);">No demand or supply data for the current filter.</p>`;
+    return;
+  }
+
+  const rowsHtml = displayItems.map(it => {
+    const total = Math.max(1, it.demand + it.supply);
+    const demandPct = Math.round((it.demand / total) * 100);
+    const supplyPct = 100 - demandPct;
+    const clickAttr = it.sub_service
+      ? `data-cat="${esc(it.primary_category)}" data-sub="${esc(it.sub_service)}" onclick="filterBySubService(this.dataset.cat, this.dataset.sub)"`
+      : `data-cat="${esc(it.primary_category)}" onclick="filterByCategory(this.dataset.cat)"`;
+
+    return `
+      <div class="ratio-row" ${clickAttr} title="Click to filter leads to ${esc(it.title)}">
+        <div class="ratio-row-top">
+          <div>
+            <span style="font-weight:600;color:var(--text);font-size:0.86rem;">${esc(it.title)}</span>
+            <span style="font-size:0.75rem;color:var(--muted);margin-left:8px;">${esc(it.subtitle)}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span style="font-size:0.77rem;">
+              <strong style="color:#34d399;">${it.demand} ${demandLabel}</strong>
+              <span style="color:var(--muted);"> vs </span>
+              <strong style="color:#c084fc;">${it.supply} Supply Ads</strong>
+              <span style="color:var(--muted);margin-left:4px;">(${demandPct}% / ${supplyPct}%)</span>
+            </span>
+            ${formatOpportunityBadge(it.demand, it.supply)}
+          </div>
+        </div>
+        <div class="ratio-bar-track">
+          <div class="ratio-fill-demand" style="width:${demandPct}%"></div>
+          <div class="ratio-fill-supply" style="width:${supplyPct}%"></div>
+          <div class="ratio-midline" title="1:1 Balance Line (50% Demand / 50% Supply)"></div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  container.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;font-size:0.79rem;color:var(--muted);">
+      <div>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#34d399;margin-right:5px;vertical-align:middle;"></span>
+        <strong style="color:#34d399;">Customer Demand (${demandLabel})</strong>
+        <span style="margin:0 10px;">|</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#c084fc;margin-right:5px;vertical-align:middle;"></span>
+        <strong style="color:#c084fc;">Contractor Supply Ads (Plumbers / Pros Offering Services)</strong>
+      </div>
+      <div>White center line = <strong>1:1 Ratio (50% / 50%)</strong> &middot; Green past center = <strong>Underserved</strong></div>
+    </div>
+    <div style="max-height:420px;overflow-y:auto;padding-right:4px;">
+      ${rowsHtml}
     </div>
   `;
 }
@@ -1025,6 +1239,8 @@ async function loadPosts() {
       if (plat !== "all" && p.platform !== plat) return false;
       if (intent === "demand_only") {
         if (p.intent_type !== "customer_hiring" && p.intent_type !== "diy_help_needed") return false;
+      } else if (intent === "hiring_and_supply") {
+        if (p.intent_type !== "customer_hiring" && p.intent_type !== "service_provider_ad") return false;
       } else if (intent !== "all" && p.intent_type !== intent) return false;
       if (cat !== "all" && p.primary_category !== cat) return false;
       if (sub !== "all" && p.sub_service !== sub) return false;
@@ -1086,6 +1302,10 @@ async function resetFilters() {
   document.getElementById("filter-sort").value = "relevance";
   document.getElementById("filter-search").value = "";
   selectedPricingTrade = "all";
+  selectedPricingSource = "all";
+  document.querySelectorAll("#pricing-source-tabs .period-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.getAttribute("data-source") === "all");
+  });
   const pSel = document.getElementById("pricing-trade-select");
   if (pSel) pSel.value = "all";
   syncActiveKpiCard("demand_only");
