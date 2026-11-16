@@ -459,6 +459,33 @@ def get_existing_ids(external_ids: List[str]) -> set:
     return found
 
 
+def get_all_existing_ids() -> set:
+    """Return the full set of external_ids currently stored in the posts table."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT external_id FROM posts")
+    found = {r["external_id"] for r in cur.fetchall()}
+    conn.close()
+    return found
+
+
+def touch_seen_posts(external_ids: List[str], seen_at_iso: str) -> None:
+    """Batch-refresh last_seen_at and clear deleted_at for still-live posts in one transaction."""
+    if not external_ids:
+        return
+    conn = get_connection()
+    cur = conn.cursor()
+    for i in range(0, len(external_ids), 500):
+        chunk = external_ids[i:i + 500]
+        placeholders = ",".join("?" * len(chunk))
+        cur.execute(
+            f"UPDATE posts SET last_seen_at = ?, deleted_at = '' WHERE external_id IN ({placeholders})",
+            [seen_at_iso, *chunk],
+        )
+    conn.commit()
+    conn.close()
+
+
 def upsert_post(post: Dict[str, Any], force: bool = False) -> bool:
     """
     Insert a post or update it if it already exists. Returns True if newly inserted.

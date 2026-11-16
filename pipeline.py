@@ -5,6 +5,8 @@ from typing import List, Dict, Any, Optional
 from database import (
     get_connection,
     get_existing_ids,
+    get_all_existing_ids,
+    touch_seen_posts,
     get_setting,
     upsert_post,
     mark_missing_posts_deleted,
@@ -68,6 +70,7 @@ def run_scrape_pipeline(
 
     raw_posts: List[Dict[str, Any]] = []
     logs: List[str] = []
+    known_ids = get_all_existing_ids()
 
     with ThreadPoolExecutor(max_workers=12) as executor:
         future_map = {}
@@ -84,6 +87,7 @@ def run_scrape_pipeline(
                     20,
                     reg.get("country", "Canada"),
                     reg.get("province", ""),
+                    known_ids,
                 )
                 future_map[fut] = f"Craigslist ({reg['name']})"
 
@@ -118,7 +122,7 @@ def run_scrape_pipeline(
             future_map[fut] = "DIY Stack Exchange"
 
         if "51ca" in platforms:
-            fut = executor.submit(scrape_51ca_services, 6, True)
+            fut = executor.submit(scrape_51ca_services, 6, True, known_ids)
             future_map[fut] = "51.ca Chinese Yellow Pages (Translated)"
 
         for fut in as_completed(future_map):
@@ -135,10 +139,13 @@ def run_scrape_pipeline(
     for p in raw_posts:
         deduped.setdefault(p["external_id"], p)
     raw_posts = list(deduped.values())
-    existing_ids = get_existing_ids(list(deduped.keys()))
+
+    already_stored_stubs = [p for p in raw_posts if p.get("_already_stored")]
+    active_raw_posts = [p for p in raw_posts if not p.get("_already_stored")]
+    existing_ids = get_existing_ids([p["external_id"] for p in active_raw_posts])
 
     # Stage 1: Hybrid Rule & Keyword Scoring Classification
-    classified_posts = [classify_post_rules(p) for p in raw_posts]
+    classified_posts = [classify_post_rules(p) for p in active_raw_posts]
 
     # Stage 2: Optional LLM Enrichment (Gemini / OpenAI) — only for posts we haven't seen before,
     # so repeated scrapes don't re-pay for the same posts.
@@ -160,6 +167,8 @@ def run_scrape_pipeline(
             demand_leads += 1
 
     finished_at = datetime.now(timezone.utc).isoformat()
+    if already_stored_stubs:
+        touch_seen_posts([p["external_id"] for p in already_stored_stubs], finished_at)
     deleted_detected = mark_missing_posts_deleted(raw_posts, finished_at)
 
     conn = get_connection()

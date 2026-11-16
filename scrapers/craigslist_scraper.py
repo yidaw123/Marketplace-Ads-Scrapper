@@ -3,7 +3,7 @@ import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from bs4 import BeautifulSoup
 
 CL_SECTIONS = [
@@ -62,6 +62,7 @@ def scrape_craigslist_region(
     max_detail_fetches: int = 20,
     country: str = "Canada",
     province: str = "",
+    existing_ids: Optional[set] = None,
 ) -> List[Dict[str, Any]]:
     """
     Scrape Craigslist Labor Gigs (lbg), Domestic Gigs (dmg), and Household Services (hss)
@@ -147,9 +148,13 @@ def scrape_craigslist_region(
     post_list = list(results.values())
 
     # Enrich gig posts with the real Craigslist body text + posting date. Gigs are where homeowner
-    # demand lives, so they get priority; a small thread pool keeps this fast but polite.
+    # demand lives, so they get priority; already-stored posts are skipped to keep scrapes fast.
     if fetch_details_for_gigs:
-        to_fetch = [p for p in post_list if p.get("_is_gig")][:max_detail_fetches]
+        to_fetch = [
+            p
+            for p in post_list
+            if p.get("_is_gig") and (not existing_ids or p["external_id"] not in existing_ids)
+        ][:max_detail_fetches]
         with ThreadPoolExecutor(max_workers=4) as pool:
             for p, details in zip(to_fetch, pool.map(lambda x: fetch_craigslist_post_details(x["url"], timeout=6), to_fetch)):
                 if details["body"]:
@@ -159,5 +164,7 @@ def scrape_craigslist_region(
                     p["posted_at_exact"] = True
     for p in post_list:
         p.pop("_is_gig", None)
+        if existing_ids and p["external_id"] in existing_ids and not p.get("body"):
+            p["_already_stored"] = True
 
     return post_list

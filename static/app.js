@@ -2161,30 +2161,62 @@ async function isBackendReachable(apiBase) {
   }
 }
 
+async function waitForActiveScrape(apiBase, maxWaitMs = 240000) {
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 2500));
+    try {
+      const resp = await fetchWithTimeout(`${apiBase}/api/summary`, {}, 5000);
+      if (!resp.ok) continue;
+      const sumJson = await resp.json();
+      const latestRun = (sumJson.recent_runs && sumJson.recent_runs[0]) || null;
+      if (latestRun && latestRun.status !== "running") {
+        return latestRun;
+      }
+    } catch (_e) {
+      // Transient fetch hiccup while backend is busy; keep polling
+    }
+  }
+  throw new Error("Timed out waiting for the running scrape to finish.");
+}
+
 async function triggerScrape() {
   const btn = document.getElementById("scrape-btn");
   btn.disabled = true;
-  btn.textContent = "Scraping...";
+  let elapsedSec = 0;
+  btn.textContent = "Scraping... (0s)";
+  const timer = setInterval(() => {
+    elapsedSec += 1;
+    btn.textContent = `Scraping... (${elapsedSec}s)`;
+  }, 1000);
+
   try {
     const apiBase = isStaticHost() ? "http://127.0.0.1:8765" : "";
     let usedBackend = false;
     let res = null;
 
     if (await isBackendReachable(apiBase)) {
+      let resp = null;
       try {
-        const resp = await fetchWithTimeout(`${apiBase}/api/scrape`, {
+        resp = await fetchWithTimeout(`${apiBase}/api/scrape`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ platforms: ["reddit", "craigslist", "kijiji", "stackexchange", "51ca"], include_national_reddit: true }),
-        }, 120000);
+        }, 240000);
+      } catch (_bridgeErr) {
+        if (!apiBase) throw _bridgeErr;
+      }
+
+      if (resp) {
         const ctype = resp.headers.get("content-type") || "";
-        if (ctype.includes("application/json")) {
+        if (resp.status === 409) {
+          res = await waitForActiveScrape(apiBase, 240000);
+          usedBackend = true;
+        } else if (ctype.includes("application/json")) {
           res = await resp.json();
           if (!resp.ok) throw new Error(res.error || `HTTP ${resp.status}`);
           usedBackend = true;
         }
-      } catch (_bridgeErr) {
-        usedBackend = false;
       }
     }
 
@@ -2197,6 +2229,7 @@ async function triggerScrape() {
   } catch (e) {
     alert("Error running scrape: " + e.message);
   } finally {
+    clearInterval(timer);
     btn.disabled = false;
     btn.textContent = "Run Live Scrape";
   }

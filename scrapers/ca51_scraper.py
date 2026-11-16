@@ -325,11 +325,13 @@ def _fetch_detail_page(item: Dict[str, Any]) -> None:
 def scrape_51ca_services(
     max_per_category: int = 6,
     fetch_details: bool = True,
+    existing_ids: Optional[set] = None,
 ) -> List[Dict[str, Any]]:
     """
     Crawls 51.ca Chinese Yellow Pages across the 16 home-service categories,
-    clicks into post detail pages for full descriptions and pricing,
-    normalizes Chinese pricing formats, and translates content to English.
+    clicks into post detail pages for full descriptions and pricing (skipping
+    posts already stored in existing_ids), normalizes Chinese pricing formats,
+    and translates new content to English.
     """
     now_iso = datetime.now(timezone.utc).isoformat()
     collected_by_id: Dict[str, Dict[str, Any]] = {}
@@ -351,34 +353,66 @@ def scrape_51ca_services(
     if not items:
         return []
 
-    if fetch_details:
-        with ThreadPoolExecutor(max_workers=8) as detail_exec:
-            futs = [detail_exec.submit(_fetch_detail_page, item) for item in items]
-            for fut in as_completed(futs):
-                try:
-                    fut.result()
-                except Exception:
-                    pass
-
-    # Prepare texts for batched Chinese -> English translation
-    titles_src = [
-        f"{it['zh_title']} ({it['zh_tags']})" if it["zh_tags"] else it["zh_title"]
-        for it in items
-    ]
-    descs_src = [it["zh_desc"] or it["zh_tags"] or it["zh_title"] for it in items]
-
-    en_titles = translate_zh_batch(titles_src)
-    en_descs = translate_zh_batch(descs_src)
+    if existing_ids:
+        new_items = [it for it in items if f"51ca_{it['post_id']}" not in existing_ids]
+        seen_items = [it for it in items if f"51ca_{it['post_id']}" in existing_ids]
+    else:
+        new_items = items
+        seen_items = []
 
     posts: List[Dict[str, Any]] = []
-    for it, en_title, en_desc in zip(items, en_titles, en_descs):
-        zh_title = it["zh_title"]
-        zh_desc = it["zh_desc"] or it["zh_tags"]
-        norm_en_title = normalize_zh_prices(en_title or zh_title)
-        norm_en_desc = normalize_zh_prices(en_desc or zh_desc)
-        neighborhood = _resolve_gta_neighborhood(it["locations"], zh_title, zh_desc)
 
-        combined_body = f"{norm_en_desc}\n[Original ZH]: {normalize_zh_prices(zh_desc)}"
+    if new_items:
+        if fetch_details:
+            with ThreadPoolExecutor(max_workers=8) as detail_exec:
+                futs = [detail_exec.submit(_fetch_detail_page, item) for item in new_items]
+                for fut in as_completed(futs):
+                    try:
+                        fut.result()
+                    except Exception:
+                        pass
+
+        # Prepare texts for batched Chinese -> English translation
+        titles_src = [
+            f"{it['zh_title']} ({it['zh_tags']})" if it["zh_tags"] else it["zh_title"]
+            for it in new_items
+        ]
+        descs_src = [it["zh_desc"] or it["zh_tags"] or it["zh_title"] for it in new_items]
+
+        en_titles = translate_zh_batch(titles_src)
+        en_descs = translate_zh_batch(descs_src)
+
+        for it, en_title, en_desc in zip(new_items, en_titles, en_descs):
+            zh_title = it["zh_title"]
+            zh_desc = it["zh_desc"] or it["zh_tags"]
+            norm_en_title = normalize_zh_prices(en_title or zh_title)
+            norm_en_desc = normalize_zh_prices(en_desc or zh_desc)
+            neighborhood = _resolve_gta_neighborhood(it["locations"], zh_title, zh_desc)
+
+            combined_body = f"{norm_en_desc}\n[Original ZH]: {normalize_zh_prices(zh_desc)}"
+            posts.append(
+                {
+                    "external_id": f"51ca_{it['post_id']}",
+                    "platform": "51ca",
+                    "source_detail": f"51.ca Yellow Pages ({it['cat_label']})",
+                    "country": "Canada",
+                    "province": "Ontario",
+                    "city_region": "Toronto / GTA, ON",
+                    "neighborhood": neighborhood,
+                    "title": f"{norm_en_title} [{zh_title}]",
+                    "body": combined_body[:1200],
+                    "url": it["url"],
+                    "author": it["contact"] or "51ca_provider",
+                    "price_mention": "",
+                    "posted_at": it["posted_date"] or now_iso,
+                    "posted_at_exact": bool(it["posted_date"]),
+                    "default_category": it["default_trade_category"],
+                    "score": 1,
+                    "num_comments": 0,
+                }
+            )
+
+    for it in seen_items:
         posts.append(
             {
                 "external_id": f"51ca_{it['post_id']}",
@@ -387,17 +421,10 @@ def scrape_51ca_services(
                 "country": "Canada",
                 "province": "Ontario",
                 "city_region": "Toronto / GTA, ON",
-                "neighborhood": neighborhood,
-                "title": f"{norm_en_title} [{zh_title}]",
-                "body": combined_body[:1200],
+                "title": it["zh_title"],
+                "body": "",
                 "url": it["url"],
-                "author": it["contact"] or "51ca_provider",
-                "price_mention": "",
-                "posted_at": it["posted_date"] or now_iso,
-                "posted_at_exact": bool(it["posted_date"]),
-                "default_category": it["default_trade_category"],
-                "score": 1,
-                "num_comments": 0,
+                "_already_stored": True,
             }
         )
 
