@@ -1676,6 +1676,10 @@ function renderPostsPage() {
 
     const bodySnippet = (p.body || "").trim();
     const dateStr = (p.posted_at || "").slice(0, 10);
+    const deletedDateStr = (p.deleted_at || "").slice(0, 10);
+    const deletedBadge = deletedDateStr
+      ? `<span style="font-size:0.72rem;color:#fb7185;" title="Estimated removal timestamp (detected missing during scrape)">&middot; Removed ~${esc(deletedDateStr)}</span>`
+      : "";
 
     return `
       <tr>
@@ -1697,6 +1701,7 @@ function renderPostsPage() {
           <div style="display:flex;align-items:center;gap:6px;margin-top:5px;flex-wrap:wrap;">
             ${platBadge}
             <span style="font-size:0.75rem;color:var(--muted);">${esc(dateStr)}</span>
+            ${deletedBadge}
           </div>
         </td>
         <td style="text-align:right;">
@@ -1758,6 +1763,7 @@ function handleExportCsv(evt) {
     "City / Region", "Neighborhood", "Intent Type", "Intent Score",
     "Trade Category", "Task Category", "Urgency", "Price Mention",
     "Price Value", "Price Type", "Title", "Description", "URL", "Posted At",
+    "Deleted At (Est.)",
   ];
   const lines = [headers.map(_csvCell).join(",")];
   rows.forEach(p => {
@@ -1766,6 +1772,7 @@ function handleExportCsv(evt) {
       p.city_region, p.neighborhood, p.intent_type, p.intent_score,
       p.primary_category, p.sub_service, p.urgency, p.price_mention,
       p.price_value, p.price_type, p.title, p.body, p.url, p.posted_at,
+      p.deleted_at || "",
     ].map(_csvCell).join(","));
   });
   const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });

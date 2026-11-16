@@ -2,7 +2,7 @@ import sqlite3
 import json
 import os
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "market_research.db")
 
@@ -333,6 +333,11 @@ def init_db() -> None:
         cur.execute("ALTER TABLE posts ADD COLUMN price_value REAL DEFAULT 0")
     if "price_type" not in existing_cols:
         cur.execute("ALTER TABLE posts ADD COLUMN price_type TEXT DEFAULT ''")
+    if "last_seen_at" not in existing_cols:
+        cur.execute("ALTER TABLE posts ADD COLUMN last_seen_at TEXT DEFAULT ''")
+        cur.execute("UPDATE posts SET last_seen_at = scraped_at WHERE last_seen_at = '' OR last_seen_at IS NULL")
+    if "deleted_at" not in existing_cols:
+        cur.execute("ALTER TABLE posts ADD COLUMN deleted_at TEXT DEFAULT ''")
 
     # Seed or upgrade regions setting so new Canadian provinces/cities are always present
     cur.execute("SELECT value FROM settings WHERE key = 'regions'")
@@ -477,10 +482,16 @@ def upsert_post(post: Dict[str, Any], force: bool = False) -> bool:
             cur.execute("UPDATE posts SET body = ? WHERE external_id = ?", (post["body"], post["external_id"]))
         if post.get("posted_at_exact") and post.get("posted_at"):
             cur.execute("UPDATE posts SET posted_at = ? WHERE external_id = ?", (post["posted_at"], post["external_id"]))
-        cur.execute(
-            "UPDATE posts SET score = ?, num_comments = ? WHERE external_id = ?",
-            (post.get("score", 0), post.get("num_comments", 0), post["external_id"]),
-        )
+        if not force:
+            cur.execute(
+                "UPDATE posts SET score = ?, num_comments = ?, last_seen_at = ?, deleted_at = '' WHERE external_id = ?",
+                (post.get("score", 0), post.get("num_comments", 0), now_iso, post["external_id"]),
+            )
+        else:
+            cur.execute(
+                "UPDATE posts SET score = ?, num_comments = ? WHERE external_id = ?",
+                (post.get("score", 0), post.get("num_comments", 0), post["external_id"]),
+            )
         keep_llm = (
             not force
             and str(existing["classified_by"]).endswith("_llm")
@@ -540,10 +551,11 @@ def upsert_post(post: Dict[str, Any], force: bool = False) -> bool:
             INSERT INTO posts (
                 external_id, platform, source_detail, country, province, city_region, neighborhood,
                 title, body, url, author, price_mention, price_value, price_type, posted_at, scraped_at,
+                last_seen_at, deleted_at,
                 intent_type, intent_score, primary_category, sub_service, secondary_categories,
                 urgency, diy_difficulty, extracted_pain_point, marketing_angle,
                 classified_by, score, num_comments
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 post["external_id"],
@@ -562,6 +574,8 @@ def upsert_post(post: Dict[str, Any], force: bool = False) -> bool:
                 post.get("price_type", ""),
                 post.get("posted_at", now_iso),
                 now_iso,
+                now_iso,
+                "",
                 post.get("intent_type", "diy_help_needed"),
                 post.get("intent_score", 50),
                 post.get("primary_category", "General Handyman & Odd Jobs"),
@@ -579,6 +593,56 @@ def upsert_post(post: Dict[str, Any], force: bool = False) -> bool:
         conn.commit()
         conn.close()
         return True
+
+
+def mark_missing_posts_deleted(raw_posts: List[Dict[str, Any]], scrape_timestamp: str) -> int:
+    """
+    Estimate removal timestamps for posts that were previously seen in a feed
+    (platform + source_detail) but are missing when that feed is scraped again.
+    """
+    if not raw_posts:
+        return 0
+
+    grouped: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+    for p in raw_posts:
+        key = (p.get("platform", ""), p.get("source_detail", ""))
+        if key[0] and key[1]:
+            grouped.setdefault(key, []).append(p)
+
+    conn = get_connection()
+    cur = conn.cursor()
+    deleted_count = 0
+
+    for (platform, source_detail), batch in grouped.items():
+        seen_ids = {p["external_id"] for p in batch if p.get("external_id")}
+        posted_dates = [str(p.get("posted_at") or "") for p in batch if p.get("posted_at")]
+        min_posted_at = min(posted_dates) if posted_dates else ""
+
+        cur.execute(
+            """
+            SELECT external_id, posted_at
+            FROM posts
+            WHERE platform = ?
+              AND source_detail = ?
+              AND (deleted_at IS NULL OR deleted_at = '')
+            """,
+            (platform, source_detail),
+        )
+        for row in cur.fetchall():
+            ext_id = row["external_id"]
+            if ext_id in seen_ids:
+                continue
+            row_posted = str(row["posted_at"] or "")
+            if platform in ("kijiji", "craigslist", "51ca") or (min_posted_at and row_posted >= min_posted_at):
+                cur.execute(
+                    "UPDATE posts SET deleted_at = ? WHERE external_id = ?",
+                    (scrape_timestamp, ext_id),
+                )
+                deleted_count += 1
+
+    conn.commit()
+    conn.close()
+    return deleted_count
 
 
 def query_posts(

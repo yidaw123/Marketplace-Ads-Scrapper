@@ -7,6 +7,7 @@ from database import (
     get_existing_ids,
     get_setting,
     upsert_post,
+    mark_missing_posts_deleted,
     DEFAULT_REGIONS,
     DEFAULT_NATIONAL_SUBREDDITS,
     DEFAULT_SEARCH_KEYWORDS,
@@ -159,6 +160,8 @@ def run_scrape_pipeline(
             demand_leads += 1
 
     finished_at = datetime.now(timezone.utc).isoformat()
+    deleted_detected = mark_missing_posts_deleted(raw_posts, finished_at)
+
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
@@ -190,5 +193,6 @@ def run_scrape_pipeline(
         "total_fetched": len(raw_posts),
         "new_stored": new_stored,
         "demand_leads_found": demand_leads,
+        "deleted_detected": deleted_detected,
         "logs": logs,
     }
