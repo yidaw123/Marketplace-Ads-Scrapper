@@ -60,7 +60,7 @@
       <div class="trend-header">
         <div class="trend-title-block">
           <h2>Chart 1: Homeowner Demand Trend &amp; Seasonality by Trade Category</h2>
-          <p id="trend-subtitle">Toggle trade categories below to compare demand across timeframes or seasonal monthly cycles</p>
+          <p id="trend-subtitle">Timeframe and trade category pills below filter Chart 1, Table 1 (Pricing Benchmarks), and Chart 2 (Demand vs. Supply Ratio)</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <div class="period-tabs" id="trend-mode-tabs" title="Switch between raw post count and % share of monthly demand">
@@ -123,7 +123,7 @@
               </span>
             </span>
           </h2>
-          <p>Select a Trade Category to view its corresponding Task Categories, or filter by Hiring vs. Supply Ads</p>
+          <p>Filtered by Chart 1's timeframe and trade category pills above &middot; Toggle Hiring vs. Supply Ads or sort columns below</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <div class="period-tabs" id="pricing-source-tabs" title="Filter pricing and task rows by Customer Hiring vs. Contractor Supply Ads">
@@ -131,9 +131,6 @@
             <button class="period-btn" data-source="hiring" onclick="setPricingSourceFilter('hiring')">Hiring Only</button>
             <button class="period-btn" data-source="supply" onclick="setPricingSourceFilter('supply')">Supply Ads Only</button>
           </div>
-          <select id="pricing-trade-select" class="page-size-select" style="padding:6px 12px;font-size:0.83rem;" onchange="onPricingTradeSelect(this.value)">
-            <option value="all">All Trade Categories (Show All Task Categories)</option>
-          </select>
           <select id="pricing-sort-select" class="page-size-select" style="padding:6px 12px;font-size:0.83rem;" onchange="onPricingSortChange(this.value)">
             <option value="demand_desc">Sort: Demand Volume (High to Low)</option>
             <option value="demand_asc">Sort: Demand Volume (Low to High)</option>
@@ -219,7 +216,7 @@
       <div class="filter-panel">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.06);flex-wrap:wrap;gap:6px;">
           <h2 style="font-size:0.95rem;font-weight:600;color:var(--text);">Section 2: Lead Explorer Search &amp; Filter Controls</h2>
-          <span style="font-size:0.76rem;color:var(--muted);">Filter Table 2 and export matching rows to CSV</span>
+          <span style="font-size:0.76rem;color:var(--muted);">Filter Table 2 (All Posts &amp; Direct Links) and export matching rows to CSV</span>
         </div>
         <div class="filter-grid">
           <div class="field">
@@ -342,7 +339,7 @@
             <input type="date" id="filter-date-to" onchange="onCustomDateChange()" />
           </div>
           <div style="font-size:0.78rem;color:var(--muted);padding-bottom:8px;">
-            Filtering all tables, pricing benchmarks, and leads to this custom window
+            Filtering Table 2 leads and CSV export to this custom window
           </div>
         </div>
       </div>
@@ -413,6 +410,6 @@
     </div>
   </div>
 
-  <script src="./static/app.js?v=26"></script>
+  <script src="./static/app.js?v=27"></script>
 </body>
 </html>

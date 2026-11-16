@@ -1078,7 +1078,7 @@ def get_demand_trends(
             buckets.append({"key": f"{m_idx:02d}", "label": month_abbr[m_idx - 1]})
         series = {k: [0] * end_month for k in all_series_keys}
         for dt, cat in parsed_rows:
-            if 1 <= dt.month <= end_month:
+            if dt.year == max_dt.year and 1 <= dt.month <= end_month:
                 b_idx = dt.month - 1
                 series["All Demand"][b_idx] += 1
                 if cat in series:
@@ -1213,7 +1213,14 @@ def get_demand_trends(
                 if cat in series:
                     series[cat][idx] += 1
 
-    totals = {k: sum(vals) for k, vals in series.items()}
+    if period_norm == "ALL":
+        totals = {k: 0 for k in all_series_keys}
+        for _dt, cat in parsed_rows:
+            totals["All Demand"] += 1
+            if cat in totals:
+                totals[cat] += 1
+    else:
+        totals = {k: sum(vals) for k, vals in series.items()}
     return {
         "period": period_norm,
         "buckets": buckets,

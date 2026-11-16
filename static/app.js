@@ -3,7 +3,7 @@ let summaryData = null;
 let trendData = null;
 let currentTrendPeriod = "1Y";
 let currentTrendMode = "count"; // 'count' or 'share'
-let selectedPricingTrade = "all";
+let analyticsIntent = "demand_only";
 let selectedPricingSource = "all"; // 'all', 'hiring', 'supply'
 let selectedPricingSort = "demand_desc";
 let ratioViewLevel = "task"; // 'task' or 'trade'
@@ -64,23 +64,12 @@ function syncActiveKpiCard(intentVal) {
 }
 
 function quickSelectIntent(intentVal) {
-  document.getElementById("filter-intent").value = intentVal;
-  if (intentVal === "demand_only") {
-    document.getElementById("filter-category").value = "all";
-    const subSel = document.getElementById("filter-sub-service");
-    if (subSel) subSel.value = "all";
-    updateSubServiceOptions();
-  }
-  syncActiveKpiCard(intentVal);
-  if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
+  analyticsIntent = intentVal || "demand_only";
+  syncActiveKpiCard(analyticsIntent);
   loadTrends();
-  loadPosts();
 }
 
 function onIntentDropdownChange() {
-  const val = document.getElementById("filter-intent").value;
-  syncActiveKpiCard(val);
-  loadTrends();
   loadPosts();
 }
 
@@ -261,12 +250,14 @@ function computeStaticTrends(snap, period, country, province, city_region, inten
   const series = {};
 
   if (pNorm === "YTD" || pNorm === "SEASONALITY") {
+    const endYear = maxDt.getUTCFullYear();
     const endMonth = maxDt.getUTCMonth() + 1;
     for (let m = 1; m <= endMonth; m++) buckets.push({ key: String(m).padStart(2, "0"), label: monthAbbr[m - 1] });
     allKeys.forEach(k => { series[k] = new Array(endMonth).fill(0); });
     demandPosts.forEach(p => {
+      const yr = parseInt(String(p.posted_at || "").slice(0, 4), 10);
       const m = parseInt(String(p.posted_at || "").slice(5, 7), 10);
-      if (m >= 1 && m <= endMonth) {
+      if (yr === endYear && m >= 1 && m <= endMonth) {
         series["All Demand"][m - 1]++;
         if (series[p.primary_category]) series[p.primary_category][m - 1]++;
       }
@@ -411,7 +402,15 @@ function computeStaticTrends(snap, period, country, province, city_region, inten
   }
 
   const totals = {};
-  allKeys.forEach(k => { totals[k] = (series[k] || []).reduce((a, b) => a + b, 0); });
+  if (pNorm === "ALL") {
+    allKeys.forEach(k => { totals[k] = 0; });
+    demandPosts.forEach(p => {
+      totals["All Demand"]++;
+      if (totals[p.primary_category] !== undefined) totals[p.primary_category]++;
+    });
+  } else {
+    allKeys.forEach(k => { totals[k] = (series[k] || []).reduce((a, b) => a + b, 0); });
+  }
   return {
     period: pNorm,
     buckets,
@@ -500,26 +499,72 @@ async function onDatePresetChange() {
     if (df && !df.value && trendData && trendData.min_date) df.value = trendData.min_date;
     if (dt && !dt.value) dt.value = (trendData && trendData.max_date) ? trendData.max_date : fallbackToday;
   }
-  await refreshSummaryForGeo();
   await loadPosts();
 }
 
 async function onCustomDateChange() {
-  await refreshSummaryForGeo();
   await loadPosts();
 }
 
+function getAnalyticsDateBounds() {
+  const refStr = (trendData && trendData.max_date) || new Date().toISOString().slice(0, 10);
+  const refDt = new Date(refStr + "T00:00:00Z");
+  const pNorm = (currentTrendPeriod || "1Y").toUpperCase();
+
+  if (pNorm === "7D") {
+    return { date_from: new Date(refDt.getTime() - 6 * 86400000).toISOString().slice(0, 10), date_to: "" };
+  }
+  if (pNorm === "1M") {
+    return { date_from: new Date(refDt.getTime() - 29 * 86400000).toISOString().slice(0, 10), date_to: "" };
+  }
+  if (pNorm === "3M") {
+    return { date_from: new Date(refDt.getTime() - (13 * 7 - 1) * 86400000).toISOString().slice(0, 10), date_to: "" };
+  }
+  if (pNorm === "6M") {
+    return { date_from: new Date(refDt.getTime() - (26 * 7 - 1) * 86400000).toISOString().slice(0, 10), date_to: "" };
+  }
+  if (pNorm === "1Y") {
+    let y = refDt.getUTCFullYear();
+    let m = refDt.getUTCMonth() + 1 - 11;
+    if (m <= 0) { m += 12; y -= 1; }
+    return { date_from: `${y}-${String(m).padStart(2, "0")}-01`, date_to: "" };
+  }
+  if (pNorm === "YTD" || pNorm === "SEASONALITY") {
+    return { date_from: `${refDt.getUTCFullYear()}-01-01`, date_to: "" };
+  }
+  if (pNorm === "CUSTOM") {
+    const tFromEl = document.getElementById("trend-date-from");
+    const tToEl = document.getElementById("trend-date-to");
+    return {
+      date_from: tFromEl ? tFromEl.value : "",
+      date_to: tToEl ? tToEl.value : "",
+    };
+  }
+  return { date_from: "", date_to: "" };
+}
+
+function getAnalyticsTimeLabel() {
+  const pNorm = (currentTrendPeriod || "1Y").toUpperCase();
+  if (pNorm === "YTD" || pNorm === "SEASONALITY") {
+    const mo = (trendData && trendData.latest_month_label) || "Nov";
+    return `YTD (Jan-${mo})`;
+  }
+  if (pNorm === "CUSTOM") {
+    const { date_from, date_to } = getAnalyticsDateBounds();
+    if (date_from || date_to) return `${date_from || "..."} to ${date_to || "today"}`;
+    return "Custom";
+  }
+  return pNorm;
+}
+
 async function refreshSummaryForGeo() {
-  const country = document.getElementById("filter-country").value || "all";
-  const province = document.getElementById("filter-province").value || "all";
-  const city = document.getElementById("filter-region").value || "all";
-  const { date_from, date_to } = getActiveDateBounds();
-  const paramsObj = { country, province, city_region: city };
+  const { date_from, date_to } = getAnalyticsDateBounds();
+  const paramsObj = { country: "all", province: "all", city_region: "all" };
   if (date_from) paramsObj.date_from = date_from;
   if (date_to) paramsObj.date_to = date_to;
   const qs = new URLSearchParams(paramsObj).toString();
   const [sumRes] = await Promise.all([
-    fetchJsonWithFallback(`/api/summary?${qs}`, snap => computeStaticSummary(snap, country, province, city, date_from, date_to)),
+    fetchJsonWithFallback(`/api/summary?${qs}`, snap => computeStaticSummary(snap, "all", "all", "all", date_from, date_to)),
     loadTrends(),
   ]);
   summaryData = sumRes;
@@ -531,11 +576,7 @@ async function refreshSummaryForGeo() {
 }
 
 async function loadTrends() {
-  const country = document.getElementById("filter-country").value || "all";
-  const province = document.getElementById("filter-province").value || "all";
-  const city = document.getElementById("filter-region").value || "all";
-  const intentEl = document.getElementById("filter-intent");
-  const intent_type = intentEl ? intentEl.value : "demand_only";
+  const intent_type = analyticsIntent || "demand_only";
   const tFromEl = document.getElementById("trend-date-from");
   const tToEl = document.getElementById("trend-date-to");
   const date_from = (currentTrendPeriod === "CUSTOM" && tFromEl) ? tFromEl.value : "";
@@ -543,9 +584,9 @@ async function loadTrends() {
 
   const paramsObj = {
     period: currentTrendPeriod,
-    country,
-    province,
-    city_region: city,
+    country: "all",
+    province: "all",
+    city_region: "all",
     intent_type,
   };
   if (date_from) paramsObj.date_from = date_from;
@@ -553,7 +594,7 @@ async function loadTrends() {
   const qs = new URLSearchParams(paramsObj).toString();
 
   trendData = await fetchJsonWithFallback(`/api/trends?${qs}`, snap =>
-    computeStaticTrends(snap, currentTrendPeriod, country, province, city, intent_type, date_from, date_to)
+    computeStaticTrends(snap, currentTrendPeriod, "all", "all", "all", intent_type, date_from, date_to)
   );
 
   const ytdBtn = document.getElementById("ytd-period-btn");
@@ -594,12 +635,12 @@ function setTrendPeriod(period) {
     if (tFromEl && !tFromEl.value) tFromEl.value = trendData.min_date;
     if (tToEl && !tToEl.value) tToEl.value = trendData.max_date || new Date().toISOString().slice(0, 10);
   }
-  loadTrends();
+  refreshSummaryForGeo();
 }
 
 function onTrendCustomDateChange() {
   if (currentTrendPeriod === "CUSTOM") {
-    loadTrends();
+    refreshSummaryForGeo();
   }
 }
 
@@ -607,6 +648,24 @@ function getAllWorkCategories() {
   return (trendData && trendData.categories && trendData.categories.length)
     ? trendData.categories
     : Object.keys(WORK_TYPE_COLORS).filter(k => k !== "All Demand");
+}
+
+function getAnalyticsCategorySelection() {
+  const allCats = getAllWorkCategories();
+  const selectedCats = allCats.filter(c => activeWorkTypes.has(c));
+  return {
+    allCats,
+    selectedCats,
+    isAllCats: allCats.length > 0 && selectedCats.length === allCats.length,
+  };
+}
+
+function resetAnalyticsCategories() {
+  activeWorkTypes = new Set(["All Demand", ...getAllWorkCategories()]);
+  renderTrendPills();
+  renderTrendChart();
+  renderPricingAndTaskBreakdown();
+  renderDemandSupplyRatioChart();
 }
 
 function toggleWorkTypePill(workType) {
@@ -634,6 +693,8 @@ function toggleWorkTypePill(workType) {
   }
   renderTrendPills();
   renderTrendChart();
+  renderPricingAndTaskBreakdown();
+  renderDemandSupplyRatioChart();
 }
 
 function soloWorkType(workType, evt) {
@@ -648,6 +709,8 @@ function soloWorkType(workType, evt) {
   }
   renderTrendPills();
   renderTrendChart();
+  renderPricingAndTaskBreakdown();
+  renderDemandSupplyRatioChart();
 }
 
 function renderTrendPills() {
@@ -658,7 +721,7 @@ function renderTrendPills() {
   const allSelected = allCats.every(c => activeWorkTypes.has(c));
   const keys = ["All Demand", ...allCats];
 
-  const activeIntent = document.getElementById("filter-intent")?.value || "demand_only";
+  const activeIntent = analyticsIntent || "demand_only";
   const intentLabels = {
     demand_only: "All Demand",
     customer_hiring: "All Direct Hiring",
@@ -928,34 +991,7 @@ function setPricingSourceFilter(source) {
   document.querySelectorAll("#pricing-source-tabs .period-btn").forEach(btn => {
     btn.classList.toggle("active", btn.getAttribute("data-source") === selectedPricingSource);
   });
-  const intentEl = document.getElementById("filter-intent");
-  if (intentEl) {
-    if (selectedPricingSource === "hiring") intentEl.value = "customer_hiring";
-    else if (selectedPricingSource === "supply") intentEl.value = "service_provider_ad";
-    else intentEl.value = "hiring_and_supply";
-    syncActiveKpiCard(intentEl.value);
-    if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
-    loadTrends();
-    loadPosts();
-  }
   renderPricingAndTaskBreakdown();
-}
-
-function onPricingTradeSelect(trade) {
-  selectedPricingTrade = trade || "all";
-  const sel = document.getElementById("pricing-trade-select");
-  if (sel && sel.value !== selectedPricingTrade) sel.value = selectedPricingTrade;
-  const catSel = document.getElementById("filter-category");
-  if (catSel && catSel.value !== selectedPricingTrade) {
-    catSel.value = selectedPricingTrade;
-    const subSel = document.getElementById("filter-sub-service");
-    if (subSel) subSel.value = "all";
-    updateSubServiceOptions();
-    loadPosts();
-  }
-  if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
-  renderPricingAndTaskBreakdown();
-  renderDemandSupplyRatioChart();
 }
 
 function formatOpportunityBadge(demandCount, supplyCount) {
@@ -1151,14 +1187,15 @@ function renderPricingAndTaskBreakdown() {
     return ` <span style="opacity:0.35;font-size:0.65rem;">&#8693;</span>`;
   };
 
-  const tasks = selectedPricingTrade === "all"
+  const { selectedCats, isAllCats } = getAnalyticsCategorySelection();
+  const tasks = isAllCats
     ? allTaskRows
-    : allTaskRows.filter(s => s.primary_category === selectedPricingTrade);
+    : allTaskRows.filter(s => activeWorkTypes.has(s.primary_category));
 
   const rowsHtml = tasks.map(t => {
     const dt = (t.latest_posted_at || "").slice(0, 10) || "—";
     return `
-    <tr data-cat="${esc(t.primary_category)}" data-sub="${esc(t.sub_service)}" onclick="filterBySubService(this.dataset.cat, this.dataset.sub)" title="Click to filter leads table to this Task Category">
+    <tr data-cat="${esc(t.primary_category)}" data-sub="${esc(t.sub_service)}" onclick="filterBySubService(this.dataset.cat, this.dataset.sub)" title="Click to filter Table 2 leads to this Task Category">
       <td>
         <div style="font-weight:600;color:#93c5fd;">${esc(t.sub_service)}</div>
         <div style="font-size:0.74rem;color:var(--muted);">${esc(t.primary_category)}</div>
@@ -1185,16 +1222,20 @@ function renderPricingAndTaskBreakdown() {
     ? "Contractor Supply Ad Rates Only"
     : "All Service Pricing (Hiring + Supply Ads)";
 
-  const headerSubtitle = selectedPricingTrade === "all"
-    ? `Showing <strong>All Task Categories (${tasks.length})</strong> &middot; Pricing Source: <strong>${sourceLabel}</strong>`
-    : `Showing <strong>${tasks.length} Task Categories</strong> in <strong>${esc(selectedPricingTrade)}</strong> &middot; Pricing Source: <strong>${sourceLabel}</strong>`;
+  const tradeLabel = isAllCats
+    ? `All Task Categories (${tasks.length})`
+    : selectedCats.length === 1
+    ? `${tasks.length} Task Categories in ${selectedCats[0]}`
+    : `${tasks.length} Task Categories across ${selectedCats.length} Trade Categories`;
+
+  const headerSubtitle = `Showing <strong>${esc(tradeLabel)}</strong> &middot; Timeframe: <strong>${esc(getAnalyticsTimeLabel())}</strong> &middot; Pricing Source: <strong>${sourceLabel}</strong>`;
 
   container.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
       <div style="font-size:0.84rem;color:var(--text-secondary);">
         ${headerSubtitle}
       </div>
-      ${selectedPricingTrade !== "all" ? `<button class="secondary" style="padding:5px 11px;font-size:0.78rem;" onclick="onPricingTradeSelect('all')">Show All Trade Categories</button>` : ""}
+      ${!isAllCats ? `<button class="secondary" style="padding:5px 11px;font-size:0.78rem;" onclick="resetAnalyticsCategories()">Show All Trade Categories</button>` : ""}
     </div>
     <div class="table-wrap" style="max-height:420px;overflow-y:auto;">
       <table class="pricing-table">
@@ -1209,7 +1250,7 @@ function renderPricingAndTaskBreakdown() {
             <th style="text-align:right;">Action</th>
           </tr>
         </thead>
-        <tbody>${rowsHtml || `<tr><td colspan="7" style="text-align:center;color:var(--muted);">No task categories found for this trade.</td></tr>`}</tbody>
+        <tbody>${rowsHtml || `<tr><td colspan="7" style="text-align:center;color:var(--muted);">No trade categories selected in Chart 1 above.</td></tr>`}</tbody>
       </table>
     </div>
   `;
@@ -1238,9 +1279,12 @@ function renderDemandSupplyRatioChart() {
   const isHiringOnly = ratioDemandType === "hiring";
   const demandLabel = isHiringOnly ? "Direct Hiring" : "Total Demand (Hiring + DIY)";
 
+  const { isAllCats } = getAnalyticsCategorySelection();
   let items = [];
   if (ratioViewLevel === "trade") {
-    items = (summaryData.category_breakdown || []).map(c => ({
+    const rawCats = summaryData.category_breakdown || [];
+    const filteredCats = isAllCats ? rawCats : rawCats.filter(c => activeWorkTypes.has(c.primary_category));
+    items = filteredCats.map(c => ({
       title: c.primary_category,
       subtitle: `${c.hiring_count || 0} Hiring · ${c.diy_count || 0} DIY`,
       primary_category: c.primary_category,
@@ -1250,9 +1294,9 @@ function renderDemandSupplyRatioChart() {
     }));
   } else {
     const rawSubs = summaryData.sub_service_breakdown || [];
-    const filteredSubs = selectedPricingTrade === "all"
+    const filteredSubs = isAllCats
       ? rawSubs
-      : rawSubs.filter(s => s.primary_category === selectedPricingTrade);
+      : rawSubs.filter(s => activeWorkTypes.has(s.primary_category));
     items = filteredSubs.map(s => ({
       title: s.sub_service,
       subtitle: s.primary_category,
@@ -1271,12 +1315,12 @@ function renderDemandSupplyRatioChart() {
     return scoreB - scoreA;
   });
 
-  const displayItems = ratioViewLevel === "task" && selectedPricingTrade === "all"
+  const displayItems = ratioViewLevel === "task" && isAllCats
     ? items.slice(0, 14)
     : items;
 
   if (!displayItems.length) {
-    container.innerHTML = `<p style="color:var(--muted);">No demand or supply data for the current filter.</p>`;
+    container.innerHTML = `<p style="color:var(--muted);">No demand or supply data for the active Chart 1 timeframe and trade categories.${!isAllCats ? ` <button class="secondary" style="margin-left:8px;padding:4px 10px;font-size:0.78rem;" onclick="resetAnalyticsCategories()">Show All Trade Categories</button>` : ""}</p>`;
     return;
   }
 
@@ -1475,13 +1519,6 @@ function populateFilterDropdowns(sumRes) {
     cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
   catSel.value = currentCat;
 
-  const pSel = document.getElementById("pricing-trade-select");
-  if (pSel) {
-    pSel.innerHTML = `<option value="all">All Trade Categories (Show All Task Categories)</option>` +
-      cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
-    pSel.value = selectedPricingTrade;
-  }
-
   updateSubServiceOptions();
   updateProvinceAndCityOptions();
   if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
@@ -1568,35 +1605,23 @@ async function onCountryChange() {
   document.getElementById("filter-province").value = "all";
   document.getElementById("filter-region").value = "all";
   updateProvinceAndCityOptions();
-  await refreshSummaryForGeo();
   await loadPosts();
 }
 
 async function onProvinceChange() {
   document.getElementById("filter-region").value = "all";
   updateProvinceAndCityOptions();
-  await refreshSummaryForGeo();
   await loadPosts();
 }
 
 async function onCityChange() {
-  await refreshSummaryForGeo();
   await loadPosts();
 }
 
 function onCategoryDropdownChange() {
-  const cat = document.getElementById("filter-category").value;
   const subSel = document.getElementById("filter-sub-service");
   if (subSel) subSel.value = "all";
   updateSubServiceOptions();
-  if (cat && cat !== "all") {
-    activeWorkTypes.add(cat);
-    renderTrendPills();
-    renderTrendChart();
-    onPricingTradeSelect(cat);
-  } else {
-    onPricingTradeSelect("all");
-  }
   loadPosts();
 }
 
@@ -1605,12 +1630,6 @@ function filterByCategory(cat) {
   const subSel = document.getElementById("filter-sub-service");
   if (subSel) subSel.value = "all";
   updateSubServiceOptions();
-  if (cat && cat !== "all") {
-    activeWorkTypes.add(cat);
-    renderTrendPills();
-    renderTrendChart();
-    onPricingTradeSelect(cat);
-  }
   if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
   switchTab("leads");
   loadPosts();
@@ -1638,7 +1657,6 @@ async function filterByRegion(reg) {
   document.getElementById("filter-region").value = reg;
   if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
   switchTab("leads");
-  await refreshSummaryForGeo();
   await loadPosts();
 }
 
@@ -1754,21 +1772,9 @@ async function resetFilters() {
   if (customDateRow) customDateRow.style.display = "none";
   document.getElementById("filter-sort").value = "relevance";
   document.getElementById("filter-search").value = "";
-  selectedPricingTrade = "all";
-  selectedPricingSource = "all";
-  selectedPricingSort = "demand_desc";
-  document.querySelectorAll("#pricing-source-tabs .period-btn").forEach(btn => {
-    btn.classList.toggle("active", btn.getAttribute("data-source") === "all");
-  });
-  const pSel = document.getElementById("pricing-trade-select");
-  if (pSel) pSel.value = "all";
-  const pSortSel = document.getElementById("pricing-sort-select");
-  if (pSortSel) pSortSel.value = "demand_desc";
-  syncActiveKpiCard("demand_only");
   updateSubServiceOptions();
   updateProvinceAndCityOptions();
   if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
-  await refreshSummaryForGeo();
   await loadPosts();
 }
 
@@ -2315,7 +2321,6 @@ async function saveSettings() {
 }
 
 const SEARCHABLE_SELECT_IDS = [
-  "pricing-trade-select",
   "pricing-sort-select",
   "filter-country",
   "filter-province",
