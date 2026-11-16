@@ -24,7 +24,7 @@ const WORK_TYPE_COLORS = {
 let activeWorkTypes = new Set(Object.keys(WORK_TYPE_COLORS));
 let allFilteredPosts = [];
 let currentPage = 1;
-let pageSize = 15;
+let pageSize = 25;
 
 function esc(str) {
   return String(str ?? "")
@@ -1323,7 +1323,7 @@ function goToPage(page) {
 }
 
 function changePageSize(newSize) {
-  pageSize = Number(newSize) || 15;
+  pageSize = Number(newSize) || 25;
   currentPage = 1;
   renderPostsPage();
 }
@@ -1425,7 +1425,7 @@ function renderPostsPage() {
         &nbsp;·&nbsp;
         Rows:
         <select class="page-size-select" onchange="changePageSize(this.value)">
-          ${[10, 15, 25, 50].map(sz => `<option value="${sz}" ${sz === pageSize ? 'selected' : ''}>${sz}</option>`).join("")}
+          ${[10, 25, 50, 100].map(sz => `<option value="${sz}" ${sz === pageSize ? 'selected' : ''}>${sz}</option>`).join("")}
         </select>
       </div>
       <div class="page-controls">

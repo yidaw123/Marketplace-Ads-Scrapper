@@ -592,7 +592,7 @@ def query_posts(
     urgency: Optional[str] = None,
     search: Optional[str] = None,
     min_score: int = 0,
-    limit: int = 250,
+    limit: int = 2500,
 ) -> List[Dict[str, Any]]:
     conn = get_connection()
     cur = conn.cursor()
