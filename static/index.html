@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Handyman Market Research & Lead Explorer</title>
-  <link rel="stylesheet" href="./static/styles.css?v=18" />
+  <link rel="stylesheet" href="./static/styles.css?v=20" />
 </head>
 <body>
   <div class="container">
@@ -295,6 +295,18 @@
             </select>
           </div>
           <div class="field">
+            <label for="filter-date-preset">Date Range</label>
+            <select id="filter-date-preset" onchange="onDatePresetChange()">
+              <option value="all">All Time</option>
+              <option value="7d">Last 7 Days</option>
+              <option value="30d">Last 30 Days</option>
+              <option value="90d">Last 90 Days</option>
+              <option value="6m">Last 6 Months</option>
+              <option value="1y">Last 1 Year</option>
+              <option value="custom">Custom Date Range...</option>
+            </select>
+          </div>
+          <div class="field">
             <label for="filter-sort">Sort By</label>
             <select id="filter-sort" onchange="applySortAndRender()">
               <option value="relevance">Relevance</option>
@@ -305,6 +317,19 @@
           </div>
           <div>
             <button class="secondary" onclick="resetFilters()">Reset Filters</button>
+          </div>
+        </div>
+        <div id="custom-date-row" style="display:none;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06);">
+          <div class="field">
+            <label for="filter-date-from">Start Date (From)</label>
+            <input type="date" id="filter-date-from" onchange="onCustomDateChange()" />
+          </div>
+          <div class="field">
+            <label for="filter-date-to">End Date (To)</label>
+            <input type="date" id="filter-date-to" onchange="onCustomDateChange()" />
+          </div>
+          <div style="font-size:0.78rem;color:var(--muted);padding-bottom:8px;">
+            Filtering all tables, pricing benchmarks, and leads to this custom window
           </div>
         </div>
       </div>
@@ -375,6 +400,6 @@
     </div>
   </div>
 
-  <script src="./static/app.js?v=19"></script>
+  <script src="./static/app.js?v=20"></script>
 </body>
 </html>

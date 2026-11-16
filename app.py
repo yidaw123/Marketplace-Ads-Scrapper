@@ -235,6 +235,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 country=qs.get("country", ["all"])[0],
                 province=qs.get("province", ["all"])[0],
                 city_region=qs.get("city_region", ["all"])[0],
+                date_from=qs.get("date_from", [""])[0],
+                date_to=qs.get("date_to", [""])[0],
             )
             summary["recommendations"] = build_marketing_recommendations(summary)
             summary["categories_list"] = list(SERVICE_CATEGORIES.keys())
@@ -265,8 +267,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 city_region=qs.get("city_region", ["all"])[0],
                 urgency=qs.get("urgency", ["all"])[0],
                 search=qs.get("search", [""])[0],
+                date_from=qs.get("date_from", [""])[0],
+                date_to=qs.get("date_to", [""])[0],
                 min_score=_qs_int(qs, "min_score", 0, 0, 100),
-                limit=_qs_int(qs, "limit", 300, 1, 2000),
+                limit=_qs_int(qs, "limit", 2500, 1, 5000),
             )
             self._send_json({"posts": posts, "count": len(posts)})
             return
@@ -282,6 +286,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 city_region=qs.get("city_region", ["all"])[0],
                 urgency=qs.get("urgency", ["all"])[0],
                 search=qs.get("search", [""])[0],
+                date_from=qs.get("date_from", [""])[0],
+                date_to=qs.get("date_to", [""])[0],
                 min_score=_qs_int(qs, "min_score", 0, 0, 100),
                 limit=5000,
             )

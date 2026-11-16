@@ -591,6 +591,8 @@ def query_posts(
     city_region: Optional[str] = None,
     urgency: Optional[str] = None,
     search: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     min_score: int = 0,
     limit: int = 2500,
 ) -> List[Dict[str, Any]]:
@@ -642,6 +644,14 @@ def query_posts(
         clauses.append("(title LIKE ? OR body LIKE ? OR neighborhood LIKE ? OR source_detail LIKE ?)")
         params.extend([q, q, q, q])
 
+    if date_from and date_from.strip():
+        clauses.append("substr(posted_at, 1, 10) >= ?")
+        params.append(date_from.strip()[:10])
+
+    if date_to and date_to.strip():
+        clauses.append("substr(posted_at, 1, 10) <= ?")
+        params.append(date_to.strip()[:10])
+
     where_sql = " AND ".join(clauses)
     sql = f"""
         SELECT * FROM posts
@@ -670,6 +680,8 @@ def get_analytics_summary(
     country: Optional[str] = None,
     province: Optional[str] = None,
     city_region: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
 ) -> Dict[str, Any]:
     conn = get_connection()
     cur = conn.cursor()
@@ -685,6 +697,12 @@ def get_analytics_summary(
     if city_region and city_region != "all":
         geo_clauses.append("city_region = ?")
         geo_params.append(city_region)
+    if date_from and date_from.strip():
+        geo_clauses.append("substr(posted_at, 1, 10) >= ?")
+        geo_params.append(date_from.strip()[:10])
+    if date_to and date_to.strip():
+        geo_clauses.append("substr(posted_at, 1, 10) <= ?")
+        geo_params.append(date_to.strip()[:10])
 
     where_geo_only = ("WHERE " + " AND ".join(geo_clauses)) if geo_clauses else ""
     where_not_irr = "WHERE intent_type != 'irrelevant'" + ((" AND " + " AND ".join(geo_clauses)) if geo_clauses else "")

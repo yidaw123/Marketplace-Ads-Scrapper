@@ -93,11 +93,14 @@ async function ensureStaticSnapshot() {
   return staticSnapshot;
 }
 
-function computeStaticSummary(snap, country, province, city_region) {
+function computeStaticSummary(snap, country, province, city_region, date_from, date_to) {
   const posts = (snap.posts || []).filter(p => {
     if (country && country !== "all" && p.country !== country) return false;
     if (province && province !== "all" && p.province !== province) return false;
     if (city_region && city_region !== "all" && p.city_region !== city_region) return false;
+    const postDay = String(p.posted_at || "").slice(0, 10);
+    if (date_from && postDay < date_from) return false;
+    if (date_to && postDay > date_to) return false;
     return true;
   });
   let hiring = 0, diy = 0, supply = 0, jobs = 0;
@@ -333,13 +336,55 @@ async function fetchJsonWithFallback(url, fallbackFn) {
   }
 }
 
+function getActiveDateBounds() {
+  const presetEl = document.getElementById("filter-date-preset");
+  const preset = presetEl ? presetEl.value : "all";
+  if (preset === "custom") {
+    const df = document.getElementById("filter-date-from");
+    const dt = document.getElementById("filter-date-to");
+    return {
+      date_from: df ? df.value : "",
+      date_to: dt ? dt.value : "",
+    };
+  }
+  const dayMap = { "7d": 7, "30d": 30, "90d": 90, "6m": 182, "1y": 365 };
+  if (dayMap[preset]) {
+    const fromDt = new Date(Date.now() - dayMap[preset] * 86400000);
+    return {
+      date_from: fromDt.toISOString().slice(0, 10),
+      date_to: "",
+    };
+  }
+  return { date_from: "", date_to: "" };
+}
+
+async function onDatePresetChange() {
+  const presetEl = document.getElementById("filter-date-preset");
+  const preset = presetEl ? presetEl.value : "all";
+  const customRow = document.getElementById("custom-date-row");
+  if (customRow) {
+    customRow.style.display = preset === "custom" ? "grid" : "none";
+  }
+  await refreshSummaryForGeo();
+  await loadPosts();
+}
+
+async function onCustomDateChange() {
+  await refreshSummaryForGeo();
+  await loadPosts();
+}
+
 async function refreshSummaryForGeo() {
   const country = document.getElementById("filter-country").value || "all";
   const province = document.getElementById("filter-province").value || "all";
   const city = document.getElementById("filter-region").value || "all";
-  const qs = new URLSearchParams({ country, province, city_region: city }).toString();
+  const { date_from, date_to } = getActiveDateBounds();
+  const paramsObj = { country, province, city_region: city };
+  if (date_from) paramsObj.date_from = date_from;
+  if (date_to) paramsObj.date_to = date_to;
+  const qs = new URLSearchParams(paramsObj).toString();
   const [sumRes] = await Promise.all([
-    fetchJsonWithFallback(`/api/summary?${qs}`, snap => computeStaticSummary(snap, country, province, city)),
+    fetchJsonWithFallback(`/api/summary?${qs}`, snap => computeStaticSummary(snap, country, province, city, date_from, date_to)),
     loadTrends(),
   ]);
   summaryData = sumRes;
@@ -1409,7 +1454,8 @@ async function filterByRegion(reg) {
 
 function getFilterQueryString() {
   const subSel = document.getElementById("filter-sub-service");
-  const params = new URLSearchParams({
+  const { date_from, date_to } = getActiveDateBounds();
+  const paramsObj = {
     platform: document.getElementById("filter-platform").value,
     intent_type: document.getElementById("filter-intent").value,
     category: document.getElementById("filter-category").value,
@@ -1419,8 +1465,10 @@ function getFilterQueryString() {
     city_region: document.getElementById("filter-region").value,
     urgency: document.getElementById("filter-urgency").value,
     search: document.getElementById("filter-search").value,
-  });
-  return params.toString();
+  };
+  if (date_from) paramsObj.date_from = date_from;
+  if (date_to) paramsObj.date_to = date_to;
+  return new URLSearchParams(paramsObj).toString();
 }
 
 async function loadPosts() {
@@ -1438,6 +1486,7 @@ async function loadPosts() {
     const city = document.getElementById("filter-region").value;
     const urg = document.getElementById("filter-urgency").value;
     const q = (document.getElementById("filter-search").value || "").trim().toLowerCase();
+    const { date_from, date_to } = getActiveDateBounds();
 
     const filtered = (snap.posts || []).filter(p => {
       if (plat !== "all" && p.platform !== plat) return false;
@@ -1452,6 +1501,9 @@ async function loadPosts() {
       if (prov !== "all" && p.province !== prov) return false;
       if (city !== "all" && p.city_region !== city) return false;
       if (urg !== "all" && p.urgency !== urg) return false;
+      const postDay = String(p.posted_at || "").slice(0, 10);
+      if (date_from && postDay < date_from) return false;
+      if (date_to && postDay > date_to) return false;
       if (q) {
         const hay = `${p.title || ""} ${p.body || ""} ${p.neighborhood || ""} ${p.source_detail || ""}`.toLowerCase();
         if (!hay.includes(q)) return false;
@@ -1503,6 +1555,14 @@ async function resetFilters() {
   document.getElementById("filter-province").value = "all";
   document.getElementById("filter-region").value = "all";
   document.getElementById("filter-urgency").value = "all";
+  const datePresetEl = document.getElementById("filter-date-preset");
+  if (datePresetEl) datePresetEl.value = "all";
+  const dateFromEl = document.getElementById("filter-date-from");
+  if (dateFromEl) dateFromEl.value = "";
+  const dateToEl = document.getElementById("filter-date-to");
+  if (dateToEl) dateToEl.value = "";
+  const customDateRow = document.getElementById("custom-date-row");
+  if (customDateRow) customDateRow.style.display = "none";
   document.getElementById("filter-sort").value = "relevance";
   document.getElementById("filter-search").value = "";
   selectedPricingTrade = "all";
@@ -1741,6 +1801,7 @@ const SEARCHABLE_SELECT_IDS = [
   "filter-platform",
   "filter-intent",
   "filter-urgency",
+  "filter-date-preset",
   "filter-sort",
 ];
 
