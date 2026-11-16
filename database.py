@@ -815,7 +815,8 @@ def get_analytics_summary(
             COUNT(CASE WHEN intent_type = 'service_provider_ad' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN 1 END) as supply_flat_count,
             ROUND(AVG(CASE WHEN intent_type = 'service_provider_ad' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN price_value END), 0) as supply_avg_flat,
             ROUND(MIN(CASE WHEN intent_type = 'service_provider_ad' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN price_value END), 0) as supply_min_flat,
-            ROUND(MAX(CASE WHEN intent_type = 'service_provider_ad' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN price_value END), 0) as supply_max_flat
+            ROUND(MAX(CASE WHEN intent_type = 'service_provider_ad' AND price_type = 'flat' AND price_value BETWEEN 45 AND 5000 THEN price_value END), 0) as supply_max_flat,
+            MAX(posted_at) as latest_posted_at
         FROM posts
         {where_not_irr}
         GROUP BY primary_category, sub_service

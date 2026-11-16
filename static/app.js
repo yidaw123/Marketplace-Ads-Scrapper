@@ -5,6 +5,7 @@ let currentTrendPeriod = "1Y";
 let currentTrendMode = "count"; // 'count' or 'share'
 let selectedPricingTrade = "all";
 let selectedPricingSource = "all"; // 'all', 'hiring', 'supply'
+let selectedPricingSort = "demand_desc";
 let ratioViewLevel = "task"; // 'task' or 'trade'
 let ratioDemandType = "total"; // 'total' or 'hiring'
 const WORK_TYPE_COLORS = {
@@ -164,10 +165,13 @@ function computeStaticSummary(snap, country, province, city_region) {
     addPrice(priceCatMap[c], p);
 
     const sk = `${c}|||${sub}`;
-    if (!subMap[sk]) subMap[sk] = { primary_category: c, sub_service: sub, hiring_count: 0, diy_count: 0, total_demand: 0, provider_supply: 0, hrVals: [], flatVals: [], hiringHrVals: [], hiringFlatVals: [], supplyHrVals: [], supplyFlatVals: [] };
+    if (!subMap[sk]) subMap[sk] = { primary_category: c, sub_service: sub, hiring_count: 0, diy_count: 0, total_demand: 0, provider_supply: 0, latest_posted_at: "", hrVals: [], flatVals: [], hiringHrVals: [], hiringFlatVals: [], supplyHrVals: [], supplyFlatVals: [] };
     if (p.intent_type === "customer_hiring") { subMap[sk].hiring_count++; subMap[sk].total_demand++; }
     else if (p.intent_type === "diy_help_needed") { subMap[sk].diy_count++; subMap[sk].total_demand++; }
     else if (p.intent_type === "service_provider_ad") subMap[sk].provider_supply++;
+    if (p.posted_at && (!subMap[sk].latest_posted_at || p.posted_at > subMap[sk].latest_posted_at)) {
+      subMap[sk].latest_posted_at = p.posted_at;
+    }
     addPrice(subMap[sk], p);
 
     const r = p.city_region || "National / DIY Forums";
@@ -742,6 +746,28 @@ function formatOpportunityBadge(demandCount, supplyCount) {
   return `<span class="opp-badge opp-crowded" title="${d} demand vs ${s} supply ads (${ratioStr})">${ratioStr} &middot; Crowded</span>`;
 }
 
+function onPricingSortChange(sortVal) {
+  selectedPricingSort = sortVal || "demand_desc";
+  const sSel = document.getElementById("pricing-sort-select");
+  if (sSel && sSel.value !== selectedPricingSort) sSel.value = selectedPricingSort;
+  if (typeof syncSearchableSelect === "function") syncSearchableSelect("pricing-sort-select");
+  renderPricingAndTaskBreakdown();
+}
+
+function togglePricingColSort(colKey) {
+  if (colKey === "task" || colKey === "trade") {
+    selectedPricingSort = selectedPricingSort === "task_asc" ? "task_desc" : "task_asc";
+  } else {
+    const descKey = `${colKey}_desc`;
+    const ascKey = `${colKey}_asc`;
+    selectedPricingSort = selectedPricingSort === descKey ? ascKey : descKey;
+  }
+  const sSel = document.getElementById("pricing-sort-select");
+  if (sSel) sSel.value = selectedPricingSort;
+  if (typeof syncSearchableSelect === "function") syncSearchableSelect("pricing-sort-select");
+  renderPricingAndTaskBreakdown();
+}
+
 function renderPricingAndTaskBreakdown() {
   const container = document.getElementById("pricing-task-chart");
   if (!container || !summaryData) return;
@@ -767,6 +793,7 @@ function renderPricingAndTaskBreakdown() {
           hiring_count: 0,
           diy_count: 0,
           provider_supply: 0,
+          latest_posted_at: "",
           hourly_count: 0,
           avg_hourly: null,
           min_hourly: null,
@@ -778,12 +805,6 @@ function renderPricingAndTaskBreakdown() {
         });
       }
     });
-  });
-
-  allTaskRows.sort((a, b) => {
-    if (selectedPricingSource === "hiring") return (b.hiring_count || 0) - (a.hiring_count || 0);
-    if (selectedPricingSource === "supply") return (b.provider_supply || 0) - (a.provider_supply || 0);
-    return (b.total_demand || 0) - (a.total_demand || 0) || (b.provider_supply || 0) - (a.provider_supply || 0);
   });
 
   const pickHr = r => {
@@ -806,6 +827,68 @@ function renderPricingAndTaskBreakdown() {
     return { avg: r.avg_flat, min: r.min_flat, max: r.max_flat, cnt: r.flat_count || 0 };
   };
 
+  const getVol = r => {
+    if (selectedPricingSource === "hiring") return r.hiring_count || 0;
+    if (selectedPricingSource === "supply") return r.provider_supply || 0;
+    return r.total_demand || 0;
+  };
+
+  const ratioVal = r => ((r.total_demand || 0) + 0.5) / ((r.provider_supply || 0) + 0.5);
+
+  allTaskRows.sort((a, b) => {
+    switch (selectedPricingSort) {
+      case "demand_asc":
+        return getVol(a) - getVol(b) || String(a.sub_service || "").localeCompare(String(b.sub_service || ""));
+      case "task_asc":
+        return String(a.sub_service || "").localeCompare(String(b.sub_service || ""));
+      case "task_desc":
+        return String(b.sub_service || "").localeCompare(String(a.sub_service || ""));
+      case "trade_asc":
+        return String(a.primary_category || "").localeCompare(String(b.primary_category || ""))
+          || String(a.sub_service || "").localeCompare(String(b.sub_service || ""));
+      case "hourly_desc":
+      case "hourly_asc": {
+        const va = pickHr(a).avg || 0;
+        const vb = pickHr(b).avg || 0;
+        if (!va && !vb) return getVol(b) - getVol(a);
+        if (!va) return 1;
+        if (!vb) return -1;
+        return selectedPricingSort === "hourly_desc" ? vb - va : va - vb;
+      }
+      case "flat_desc":
+      case "flat_asc": {
+        const va = pickFlat(a).avg || 0;
+        const vb = pickFlat(b).avg || 0;
+        if (!va && !vb) return getVol(b) - getVol(a);
+        if (!va) return 1;
+        if (!vb) return -1;
+        return selectedPricingSort === "flat_desc" ? vb - va : va - vb;
+      }
+      case "ratio_desc":
+      case "ratio_asc": {
+        const aEmpty = !(a.total_demand || a.provider_supply);
+        const bEmpty = !(b.total_demand || b.provider_supply);
+        if (aEmpty && !bEmpty) return 1;
+        if (!aEmpty && bEmpty) return -1;
+        return selectedPricingSort === "ratio_desc"
+          ? ratioVal(b) - ratioVal(a)
+          : ratioVal(a) - ratioVal(b);
+      }
+      case "date_desc":
+      case "date_asc": {
+        const da = String(a.latest_posted_at || "");
+        const db = String(b.latest_posted_at || "");
+        if (!da && !db) return getVol(b) - getVol(a);
+        if (!da) return 1;
+        if (!db) return -1;
+        return selectedPricingSort === "date_desc" ? db.localeCompare(da) : da.localeCompare(db);
+      }
+      case "demand_desc":
+      default:
+        return getVol(b) - getVol(a) || (b.provider_supply || 0) - (a.provider_supply || 0);
+    }
+  });
+
   const fmtHr = r => {
     const p = pickHr(r);
     if (!p.avg) return `<span style="color:var(--muted);">—</span>`;
@@ -824,11 +907,22 @@ function renderPricingAndTaskBreakdown() {
     return `<span class="price-pill price-pill-flat">$${p.avg} avg</span>${range}`;
   };
 
+  const arrowFor = keys => {
+    if (keys.includes(selectedPricingSort)) {
+      return selectedPricingSort.endsWith("_asc")
+        ? ` <span style="color:#60a5fa;">&#9650;</span>`
+        : ` <span style="color:#60a5fa;">&#9660;</span>`;
+    }
+    return ` <span style="opacity:0.35;font-size:0.65rem;">&#8693;</span>`;
+  };
+
   const tasks = selectedPricingTrade === "all"
     ? allTaskRows
     : allTaskRows.filter(s => s.primary_category === selectedPricingTrade);
 
-  const rowsHtml = tasks.map(t => `
+  const rowsHtml = tasks.map(t => {
+    const dt = (t.latest_posted_at || "").slice(0, 10) || "—";
+    return `
     <tr data-cat="${esc(t.primary_category)}" data-sub="${esc(t.sub_service)}" onclick="filterBySubService(this.dataset.cat, this.dataset.sub)" title="Click to filter leads table to this Task Category">
       <td>
         <div style="font-weight:600;color:#93c5fd;">${esc(t.sub_service)}</div>
@@ -842,11 +936,13 @@ function renderPricingAndTaskBreakdown() {
       <td>${formatOpportunityBadge(t.total_demand, t.provider_supply)}</td>
       <td>${fmtHr(t)}</td>
       <td>${fmtFlat(t)}</td>
+      <td style="font-size:0.78rem;color:var(--muted);white-space:nowrap;">${esc(dt)}</td>
       <td style="text-align:right;">
         <button class="secondary" style="padding:4px 10px;font-size:0.76rem;">Filter Posts</button>
       </td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
 
   const sourceLabel = selectedPricingSource === "hiring"
     ? "Customer Hiring Budgets Only"
@@ -869,15 +965,16 @@ function renderPricingAndTaskBreakdown() {
       <table class="pricing-table">
         <thead>
           <tr>
-            <th>Task Category &amp; Trade</th>
-            <th>Demand &amp; Supply Volume</th>
-            <th>Demand : Supply Ratio</th>
-            <th>Hourly Cost ($/hr)</th>
-            <th>Flat Fee ($)</th>
+            <th style="cursor:pointer;user-select:none;" onclick="togglePricingColSort('task')">Task Category &amp; Trade${arrowFor(['task_asc', 'task_desc', 'trade_asc'])}</th>
+            <th style="cursor:pointer;user-select:none;" onclick="togglePricingColSort('demand')">Demand &amp; Supply Volume${arrowFor(['demand_desc', 'demand_asc'])}</th>
+            <th style="cursor:pointer;user-select:none;" onclick="togglePricingColSort('ratio')">Demand : Supply Ratio${arrowFor(['ratio_desc', 'ratio_asc'])}</th>
+            <th style="cursor:pointer;user-select:none;" onclick="togglePricingColSort('hourly')">Hourly Cost ($/hr)${arrowFor(['hourly_desc', 'hourly_asc'])}</th>
+            <th style="cursor:pointer;user-select:none;" onclick="togglePricingColSort('flat')">Flat Fee ($)${arrowFor(['flat_desc', 'flat_asc'])}</th>
+            <th style="cursor:pointer;user-select:none;" onclick="togglePricingColSort('date')">Latest Date${arrowFor(['date_desc', 'date_asc'])}</th>
             <th style="text-align:right;">Action</th>
           </tr>
         </thead>
-        <tbody>${rowsHtml || `<tr><td colspan="6" style="text-align:center;color:var(--muted);">No task categories found for this trade.</td></tr>`}</tbody>
+        <tbody>${rowsHtml || `<tr><td colspan="7" style="text-align:center;color:var(--muted);">No task categories found for this trade.</td></tr>`}</tbody>
       </table>
     </div>
   `;
@@ -1410,11 +1507,14 @@ async function resetFilters() {
   document.getElementById("filter-search").value = "";
   selectedPricingTrade = "all";
   selectedPricingSource = "all";
+  selectedPricingSort = "demand_desc";
   document.querySelectorAll("#pricing-source-tabs .period-btn").forEach(btn => {
     btn.classList.toggle("active", btn.getAttribute("data-source") === "all");
   });
   const pSel = document.getElementById("pricing-trade-select");
   if (pSel) pSel.value = "all";
+  const pSortSel = document.getElementById("pricing-sort-select");
+  if (pSortSel) pSortSel.value = "demand_desc";
   syncActiveKpiCard("demand_only");
   updateSubServiceOptions();
   updateProvinceAndCityOptions();
@@ -1632,6 +1732,7 @@ async function saveSettings() {
 
 const SEARCHABLE_SELECT_IDS = [
   "pricing-trade-select",
+  "pricing-sort-select",
   "filter-country",
   "filter-province",
   "filter-region",
