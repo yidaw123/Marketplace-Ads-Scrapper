@@ -402,8 +402,12 @@ def classify_post_rules(post: Dict[str, Any]) -> Dict[str, Any]:
 
     cat_scores.sort(key=lambda x: x[1], reverse=True)
     specific_scores = [(c, s) for c, s in cat_scores if c != "General Handyman & Odd Jobs" and s >= 3]
+    default_cat = post.get("default_category")
     if specific_scores:
         primary_category = specific_scores[0][0]
+        secondary_categories = [c[0] for c in cat_scores if c[0] != primary_category and c[1] >= 4][:2]
+    elif default_cat in SERVICE_CATEGORIES:
+        primary_category = default_cat
         secondary_categories = [c[0] for c in cat_scores if c[0] != primary_category and c[1] >= 4][:2]
     elif cat_scores:
         primary_category = cat_scores[0][0]
@@ -427,6 +431,7 @@ def classify_post_rules(post: Dict[str, Any]) -> Dict[str, Any]:
 
     # Platform/channel contextual signals
     is_cl_hss = platform == "craigslist" and "/hss" in source_detail
+    is_51ca_yp = platform == "51ca"
     is_cl_gig = (
         (platform == "craigslist" and ("/lbg" in source_detail or "/dmg" in source_detail or "/cwg" in source_detail))
         or (platform == "kijiji" and "wanted" in source_detail)
@@ -444,6 +449,10 @@ def classify_post_rules(post: Dict[str, Any]) -> Dict[str, Any]:
     elif is_job_posting:
         intent_type = "job_posting"
         intent_score = 40
+    elif is_51ca_yp and hiring_hits == 0:
+        # 51.ca Yellow Pages directory listings are service providers offering work
+        intent_type = "service_provider_ad"
+        intent_score = 35
     elif is_cl_hss and (hiring_hits == 0 or provider_hits > 0):
         # Household Services is the "services offered" board; "Looking for a handyman? Call me" is still an ad
         intent_type = "service_provider_ad"

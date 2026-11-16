@@ -18,6 +18,7 @@ from scrapers import (
     scrape_reddit_national_subreddits,
     scrape_kijiji_canada,
     scrape_diy_stackexchange,
+    scrape_51ca_services,
 )
 
 
@@ -28,12 +29,12 @@ def run_scrape_pipeline(
     fetch_cl_details: bool = True,
 ) -> Dict[str, Any]:
     """
-    Executes a concurrent multi-platform scrape across Reddit, Craigslist, Kijiji, and DIY StackExchange,
+    Executes a concurrent multi-platform scrape across Reddit, Craigslist, Kijiji, DIY StackExchange, and 51.ca,
     applies the 2-stage Hybrid Intent & Service Categorization Engine,
     and saves leads to SQLite.
     """
     if not platforms:
-        platforms = ["reddit", "craigslist", "kijiji", "stackexchange"]
+        platforms = ["reddit", "craigslist", "kijiji", "stackexchange", "51ca"]
 
     all_regions = get_setting("regions", DEFAULT_REGIONS)
     if region_ids:
@@ -114,6 +115,10 @@ def run_scrape_pipeline(
         if "stackexchange" in platforms:
             fut = executor.submit(scrape_diy_stackexchange, 35)
             future_map[fut] = "DIY Stack Exchange"
+
+        if "51ca" in platforms:
+            fut = executor.submit(scrape_51ca_services, 6, True)
+            future_map[fut] = "51.ca Chinese Yellow Pages (Translated)"
 
         for fut in as_completed(future_map):
             label = future_map[fut]

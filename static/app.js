@@ -1111,8 +1111,8 @@ function renderRegionPage() {
 
   const chEl = document.getElementById("top-channels-list");
   if (chEl) {
-    const platNames = { reddit: "Reddit", craigslist: "Craigslist", kijiji: "Kijiji", stackexchange: "StackExchange" };
-    const platClasses = { reddit: "b-reddit", craigslist: "b-craigslist", kijiji: "b-kijiji", stackexchange: "b-stackexchange" };
+    const platNames = { reddit: "Reddit", craigslist: "Craigslist", kijiji: "Kijiji", "51ca": "51.ca", stackexchange: "StackExchange" };
+    const platClasses = { reddit: "b-reddit", craigslist: "b-craigslist", kijiji: "b-kijiji", "51ca": "b-51ca", stackexchange: "b-stackexchange" };
     const platforms = (summaryData && summaryData.platform_breakdown) ? summaryData.platform_breakdown : [];
     const platHtml = [...platforms]
       .sort((a, b) => (b.total || 0) - (a.total || 0))
@@ -1471,6 +1471,8 @@ function renderPostsPage() {
       ? `<span class="badge b-reddit">Reddit</span>`
       : p.platform === "kijiji"
       ? `<span class="badge b-kijiji">Kijiji</span>`
+      : p.platform === "51ca"
+      ? `<span class="badge b-51ca">51.ca</span>`
       : p.platform === "stackexchange"
       ? `<span class="badge b-stackexchange">StackExchange</span>`
       : `<span class="badge b-craigslist">Craigslist</span>`;
@@ -1553,7 +1555,7 @@ async function triggerScrape() {
     const resp = await fetch("/api/scrape", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ platforms: ["reddit", "craigslist", "kijiji", "stackexchange"], include_national_reddit: true }),
+      body: JSON.stringify({ platforms: ["reddit", "craigslist", "kijiji", "stackexchange", "51ca"], include_national_reddit: true }),
     });
     const res = await resp.json();
     if (!resp.ok) throw new Error(res.error || `HTTP ${resp.status}`);
