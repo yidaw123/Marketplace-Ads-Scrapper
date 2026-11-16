@@ -1913,8 +1913,8 @@ function handleExportCsv(evt) {
     "ID", "Platform", "Source / Channel", "Country", "Province / State",
     "City / Region", "Neighborhood", "Intent Type", "Intent Score",
     "Trade Category", "Task Category", "Urgency", "Price Mention",
-    "Price Value", "Price Type", "Title", "Description", "URL", "Posted At",
-    "Deleted At (Est.)",
+    "Price Value", "Price Type", "Name", "Phone Number", "Email", "Business Site",
+    "Title", "Description", "URL", "Posted At", "Deleted At (Est.)",
   ];
   const lines = [headers.map(_csvCell).join(",")];
   rows.forEach(p => {
@@ -1922,7 +1922,9 @@ function handleExportCsv(evt) {
       p.external_id, p.platform, p.source_detail, p.country, p.province,
       p.city_region, p.neighborhood, p.intent_type, p.intent_score,
       p.primary_category, p.sub_service, p.urgency, p.price_mention,
-      p.price_value, p.price_type, p.title, p.body, p.url, p.posted_at,
+      p.price_value, p.price_type,
+      p.contact_name || "", p.phone || "", p.email || "", p.website || "",
+      p.title, p.body, p.url, p.posted_at,
       p.deleted_at || "",
     ].map(_csvCell).join(","));
   });
@@ -2027,8 +2029,29 @@ function classifyPostClientSide(post) {
     }
   }
 
+  const rawText = `${title}\n${body}`;
+  const phoneMatches = [...rawText.matchAll(/(?:\+?1[-.\s]?)?(?:\(([2-9]\d{2})\)[-.\s]?|([2-9]\d{2})[-.\s])(\d{3})[-.\s](\d{4})\b/g)]
+    .map(m => `${m[1] || m[2]}-${m[3]}-${m[4]}`);
+  const phone = [...new Set(phoneMatches)].slice(0, 2).join(", ");
+  const emailMatches = (rawText.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,10}\b/g) || [])
+    .map(e => e.toLowerCase())
+    .filter(e => !/(?:51\.ca|craigslist\.org|kijiji\.ca|reddit\.com|example\.com)$/.test(e));
+  const email = [...new Set(emailMatches)].slice(0, 2).join(", ");
+  let website = "";
+  if (intent_type !== "diy_help_needed" && intent_type !== "irrelevant") {
+    const urlMatches = rawText.match(/(?:https?:\/\/|www\.)[A-Za-z0-9.-]+\.[A-Za-z]{2,10}(?:\/[^\s)<\]"']*)?/gi) || [];
+    const blockedHost = /(reddit\.com|redd\.it|imgur\.com|postimg\.cc|stackexchange\.com|sstatic\.net|craigslist\.org|kijiji\.ca|51\.ca|youtube\.com|youtu\.be|google\.com|facebook\.com|instagram\.com|twitter\.com|x\.com|amazon\.|homedepot\.|lowes\.|wayfair\.|ikea\.|taskrabbit\.com|\.gov$)/i;
+    website = (urlMatches.map(u => u.replace(/[.,;:!?)]+$/, "")).find(u => !blockedHost.test(u) && !/\.(jpg|jpeg|png|gif|webp|pdf)$/i.test(u))) || "";
+  }
+  const nameMatch = rawText.match(/\b(?:[Cc]ontact|[Cc]all or [Tt]ext|[Cc]all\/[Tt]ext|[Aa]sk for|[Mm]y name is|(?:[Hh]i|[Hh]ello),?\s*[Ii]['’]m)\s+([A-Z][a-z]{2,15}(?:\s+[A-Z][a-z]{2,15})?)\b/);
+  const contact_name = (nameMatch && !/^(Today|Now|Me|Us|Anytime|Here|For|Free|Quote|Looking|Moving)$/i.test(nameMatch[1])) ? nameMatch[1] : "";
+
   return {
     ...post,
+    contact_name,
+    phone,
+    email,
+    website,
     intent_type,
     intent_score,
     primary_category,

@@ -147,14 +147,16 @@ def scrape_craigslist_region(
 
     post_list = list(results.values())
 
-    # Enrich gig posts with the real Craigslist body text + posting date. Gigs are where homeowner
-    # demand lives, so they get priority; already-stored posts are skipped to keep scrapes fast.
+    # Enrich new gig & household-service posts with real Craigslist body text, posting date,
+    # and contact info; already-stored posts are skipped to keep scrapes fast.
     if fetch_details_for_gigs:
-        to_fetch = [
+        candidates = [
             p
             for p in post_list
-            if p.get("_is_gig") and (not existing_ids or p["external_id"] not in existing_ids)
-        ][:max_detail_fetches]
+            if not existing_ids or p["external_id"] not in existing_ids
+        ]
+        candidates.sort(key=lambda p: not p.get("_is_gig"))
+        to_fetch = candidates[:max_detail_fetches]
         with ThreadPoolExecutor(max_workers=4) as pool:
             for p, details in zip(to_fetch, pool.map(lambda x: fetch_craigslist_post_details(x["url"], timeout=6), to_fetch)):
                 if details["body"]:

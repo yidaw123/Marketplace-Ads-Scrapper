@@ -4,7 +4,7 @@ found when auditing scraped data. Run with:  python -m unittest test_classifier.
 """
 import unittest
 
-from classifier import classify_post_rules
+from classifier import classify_post_rules, extract_contact_info
 
 
 def classify(title, body="", platform="reddit", source="r/bayarea"):
@@ -116,6 +116,45 @@ class CategoryTests(unittest.TestCase):
 
         r3 = classify("Handyman needed to replace light switch and ceiling fan")
         self.assertEqual(r3["primary_category"], "Electrical & Lighting")
+
+
+class ContactInfoTests(unittest.TestCase):
+    def test_extracts_full_provider_contact_info(self):
+        r = classify(
+            "Licensed Plumbing & Drain Service - Call Armando Anytime",
+            "Ask for Armando or call 415-555-1234. Email: armando@bayplumbing.com Website: https://www.bayplumbing.com",
+            platform="craigslist",
+            source="sfbay/hss (Household Services)",
+        )
+        self.assertEqual(r["contact_name"], "Armando")
+        self.assertEqual(r["phone"], "415-555-1234")
+        self.assertEqual(r["email"], "armando@bayplumbing.com")
+        self.assertEqual(r["website"], "https://www.bayplumbing.com")
+
+    def test_leaves_missing_fields_blank_and_ignores_imgur_on_diy(self):
+        r = classify(
+            "How do I fix a leaky kitchen faucet?",
+            "Here is a photo of my sink: https://imgur.com/a/abc123",
+            platform="reddit",
+            source="r/DIY",
+        )
+        self.assertEqual(r["contact_name"], "")
+        self.assertEqual(r["phone"], "")
+        self.assertEqual(r["email"], "")
+        self.assertEqual(r["website"], "")
+
+    def test_extracts_chinese_contact_name_and_bare_domain(self):
+        c = extract_contact_info(
+            {
+                "title": "专业屋顶补漏",
+                "body": "联 系 人： 高师傅 (英语/国语) 联系电话： 647-998-8758 网站供参考:www.365ds.ca",
+            },
+            intent_type="service_provider_ad",
+        )
+        self.assertEqual(c["contact_name"], "高师傅")
+        self.assertEqual(c["phone"], "647-998-8758")
+        self.assertEqual(c["email"], "")
+        self.assertEqual(c["website"], "www.365ds.ca")
 
 
 if __name__ == "__main__":

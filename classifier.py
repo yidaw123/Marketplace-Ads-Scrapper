@@ -3,6 +3,7 @@ import re
 import urllib.error
 import urllib.request
 from typing import Dict, Any, List, Tuple
+from urllib.parse import urlparse
 
 SERVICE_CATEGORIES: Dict[str, Dict[str, Any]] = {
     "Plumbing & Drain": {
@@ -367,6 +368,181 @@ def parse_price_details(price_mention: str, full_text: str) -> Tuple[float, str]
     return 0.0, ""
 
 
+_CONTACT_PLACEHOLDERS = {
+    "51ca_provider", "craigslist_poster", "kijiji_homeowner",
+    "anonymous", "reddit_user", "se_user",
+}
+
+_NON_NAME_WORDS = {
+    "today", "now", "me", "us", "anytime", "here", "for", "free", "quote",
+    "estimate", "text", "call", "email", "online", "immediate", "experienced",
+    "licensed", "professional", "handyman", "plumber", "electrician", "carpenter",
+    "painter", "roofing", "services", "service", "monday", "tuesday", "wednesday",
+    "thursday", "friday", "saturday", "sunday", "looking", "moving", "seeking",
+    "hiring", "details", "info", "information", "pricing", "english", "mandarin",
+    "cantonese", "电话", "联系", "电子邮件", "微信", "手机", "英语", "国语", "粤语",
+}
+
+_EXCLUDED_EMAIL_DOMAINS = {
+    "51.ca", "craigslist.org", "kijiji.ca", "reddit.com",
+    "example.com", "email.com", "yourdomain.com", "domain.com", "test.com",
+}
+
+_EXCLUDED_SITE_DOMAINS = {
+    "reddit.com", "redd.it", "imgur.com", "postimg.cc", "wikimedia.org", "wikipedia.org",
+    "stackexchange.com", "stackoverflow.com", "sstatic.net", "craigslist.org", "kijiji.ca",
+    "51.ca", "ccue.com", "youtube.com", "youtu.be", "google.com", "goo.gl", "bit.ly",
+    "tinyurl.com", "facebook.com", "fb.com", "instagram.com", "twitter.com", "x.com",
+    "tiktok.com", "linkedin.com", "amazon.com", "amazon.ca", "homedepot.com", "homedepot.ca",
+    "lowes.com", "lowes.ca", "rona.ca", "canadiantire.ca", "menards.com", "acehardware.com",
+    "walmart.com", "walmart.ca", "ikea.com", "wayfair.com", "blinds.com", "simplehuman.com",
+    "taskrabbit.com", "thumbtack.com", "yelp.com", "bbb.org", "jotform.com", "typeform.com",
+    "voca.ro", "bing.net", "wp.com", "ebay.io", "ebay.com", "rentatech.org", "calgary.ca",
+    "nycourts.gov",
+}
+
+_PHONE_PATTERN = re.compile(
+    r"(?<!\d)(?:\+?1[-.\s]?)?(?:\(([2-9]\d{2})\)[-.\s]?|([2-9]\d{2})[-.\s\u25cf\u2022])(\d{3})[-.\s\u25cf\u2022](\d{4})\b"
+)
+_EMAIL_PATTERN = re.compile(r"\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,10})\b")
+_URL_PATTERN = re.compile(r"(?:https?://|www\.)[A-Za-z0-9.-]+\.[A-Za-z]{2,10}(?:/[^\s)<\]\"'\u4e00-\u9fff]*)?", re.IGNORECASE)
+_LABELED_DOMAIN_PATTERN = re.compile(
+    r"(?:website|site|web|网址|网站(?:供参考)?)\s*[：:]\s*([A-Za-z0-9.-]+\.[A-Za-z]{2,10}(?:/[^\s)<\]\"'\u4e00-\u9fff]*)?)",
+    re.IGNORECASE,
+)
+
+
+def _is_valid_contact_name(cand: str) -> bool:
+    c = re.sub(r"\s+", " ", (cand or "")).strip(" :-–—.,;()[]{}")
+    if not c or len(c) < 2 or len(c) > 40:
+        return False
+    lower = c.lower()
+    if lower in _CONTACT_PLACEHOLDERS or lower in _NON_NAME_WORDS:
+        return False
+    tokens = lower.split()
+    if all(t in _NON_NAME_WORDS for t in tokens):
+        return False
+    if re.search(r"(https?://|www\.|@|\d{3,})", lower):
+        return False
+    return True
+
+
+def _is_business_website(url_str: str) -> str:
+    raw = (url_str or "").strip().rstrip(".,;:!?)")
+    if not raw or "@" in raw:
+        return ""
+    if any(raw.lower().endswith(ext) for ext in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".pdf")):
+        return ""
+    parsed_in = raw if raw.lower().startswith(("http://", "https://")) else f"https://{raw}"
+    try:
+        parsed = urlparse(parsed_in)
+        host = (parsed.netloc or "").lower().split(":")[0]
+    except Exception:
+        return ""
+    if not host or "." not in host:
+        return ""
+    bare_host = host[4:] if host.startswith("www.") else host
+    if bare_host.endswith(".gov"):
+        return ""
+    for blocked in _EXCLUDED_SITE_DOMAINS:
+        if bare_host == blocked or bare_host.endswith("." + blocked):
+            return ""
+    return raw
+
+
+def extract_contact_info(post: Dict[str, Any], intent_type: str = "") -> Dict[str, str]:
+    """
+    Extracts structured contact information (contact_name, phone, email, website)
+    from scraped post fields and body text. Missing fields default to "".
+    """
+    title = (post.get("title") or "").strip()
+    body = (post.get("body") or "").strip()
+    full_text = f"{title}\n{body}"
+
+    # 1. Phone numbers
+    phones: List[str] = []
+    seen_phones = set()
+    phone_sources = f"{post.get('phone') or ''}\n{full_text}"
+    for m in _PHONE_PATTERN.finditer(phone_sources):
+        area = m.group(1) or m.group(2)
+        formatted = f"{area}-{m.group(3)}-{m.group(4)}"
+        if formatted not in seen_phones:
+            seen_phones.add(formatted)
+            phones.append(formatted)
+            if len(phones) >= 2:
+                break
+
+    # 2. Emails
+    emails: List[str] = []
+    seen_emails = set()
+    email_sources = f"{post.get('email') or ''}\n{full_text}"
+    for em in _EMAIL_PATTERN.findall(email_sources):
+        em_lower = em.lower()
+        domain = em_lower.split("@", 1)[-1]
+        if any(domain == d or domain.endswith("." + d) for d in _EXCLUDED_EMAIL_DOMAINS):
+            continue
+        if em_lower not in seen_emails:
+            seen_emails.add(em_lower)
+            emails.append(em_lower)
+            if len(emails) >= 2:
+                break
+
+    # 3. Business website (skip forum/image product links on DIY questions & irrelevant chatter)
+    website = ""
+    explicit_site = _is_business_website(post.get("website") or "")
+    if explicit_site:
+        website = explicit_site
+    elif intent_type not in ("diy_help_needed", "irrelevant"):
+        candidates = _URL_PATTERN.findall(full_text) + _LABELED_DOMAIN_PATTERN.findall(full_text)
+        for cand in candidates:
+            valid_url = _is_business_website(cand)
+            if valid_url:
+                website = valid_url
+                break
+
+    # 4. Contact Name
+    contact_name = ""
+    raw_name = (post.get("contact_name") or "").strip()
+    if _is_valid_contact_name(raw_name):
+        contact_name = raw_name
+    else:
+        name_patterns = [
+            re.compile(
+                r"\b(?:Contact\s+Person|Contact\s+Name)\s*[:：]\s*([^\n(（,;•]{2,30})",
+                re.IGNORECASE,
+            ),
+            re.compile(
+                r"联\s*系\s*人\s*[：:]\s*([^\s(（\n,，;；:：]{1,20}(?:\s+[A-Za-z]{1,15})?)"
+            ),
+            re.compile(
+                r"\b(?i:contact|call or text|call/text|ask for|my name is)\s+([A-Z][a-z]{2,15}(?:\s+[A-Z][a-z]{2,15})?)\b"
+            ),
+            re.compile(
+                r"\b(?i:hi|hello),?\s*[Ii]['’]m\s+([A-Z][a-z]{2,15}(?:\s+[A-Z][a-z]{2,15})?)\b"
+            ),
+            re.compile(
+                r"\bI['’]m\s+([A-Z][a-z]{2,15}\s+[A-Z][a-z]{2,15})\b"
+            ),
+            re.compile(r"\b(?i:call)\s+([A-Z][A-Za-z]{2,14})\s+(?i:anytime)\b"),
+        ]
+        for pat in name_patterns:
+            m = pat.search(full_text)
+            if m:
+                cand = re.sub(r"\s+", " ", m.group(1)).strip(" :-–—.,;")
+                if cand.isupper():
+                    cand = cand.title()
+                if _is_valid_contact_name(cand):
+                    contact_name = cand
+                    break
+
+    return {
+        "contact_name": contact_name,
+        "phone": ", ".join(phones),
+        "email": ", ".join(emails),
+        "website": website,
+    }
+
+
 # Pre-compile whole-word regexes for every keyword so "rot" doesn't match "front",
 # "wood" doesn't match "Hollywood", "fix" doesn't match "fixture", etc.
 # A trailing optional "s"/"es" lets "outlet" match "outlets" and "leak" match "leaks".
@@ -523,9 +699,11 @@ def classify_post_rules(post: Dict[str, Any]) -> Dict[str, Any]:
         price_mention = ""
     price_value, price_type = parse_price_details(price_mention, f"{title} {body}")
     sub_service = detect_sub_service(primary_category, title, combined)
+    contact_info = extract_contact_info(post, intent_type=intent_type)
 
     return {
         **post,
+        **contact_info,
         "price_mention": price_mention,
         "price_value": price_value,
         "price_type": price_type,

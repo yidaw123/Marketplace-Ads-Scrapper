@@ -302,6 +302,16 @@ def _parse_category_page(
     return items
 
 
+def _decode_cfemail(enc: str) -> str:
+    if not enc or len(enc) < 4:
+        return ""
+    try:
+        r = int(enc[:2], 16)
+        return "".join(chr(int(enc[i:i + 2], 16) ^ r) for i in range(2, len(enc), 2)).strip()
+    except Exception:
+        return ""
+
+
 def _fetch_detail_page(item: Dict[str, Any]) -> None:
     try:
         html = _fetch_html(item["url"], timeout=12)
@@ -310,10 +320,45 @@ def _fetch_detail_page(item: Dict[str, Any]) -> None:
         meta_desc = (meta.get("content") or "").strip() if meta else ""
 
         body_el = soup.select_one(".post-content, .detail-content, .content, article, main")
+        emails: List[str] = []
+        phones: List[str] = []
+        websites: List[str] = []
+
+        if body_el:
+            for cf in body_el.select("[data-cfemail]"):
+                decoded = _decode_cfemail(cf.get("data-cfemail") or "")
+                if decoded and not decoded.lower().endswith("@51.ca"):
+                    if decoded.lower() not in emails:
+                        emails.append(decoded.lower())
+                    cf.string = decoded
+                else:
+                    cf.string = ""
+
+            for a in body_el.select('a[href^="tel:"]'):
+                raw_ph = (a.get("href") or "")[4:].strip()
+                if raw_ph and raw_ph not in phones:
+                    phones.append(raw_ph)
+
+            for a in body_el.select("a[href]"):
+                href = (a.get("href") or "").strip()
+                if href.startswith(("http://", "https://")) and "51.ca" not in href.lower():
+                    websites.append(href)
+
         body_text = re.sub(r"\s+", " ", body_el.get_text(" ", strip=True)) if body_el else ""
         # Strip leading title repetition and contact noise where possible
         desc = body_text[:700] if len(body_text) > len(meta_desc) else meta_desc
         item["zh_desc"] = desc[:700]
+
+        if emails:
+            item["email"] = ", ".join(emails[:2])
+        if phones:
+            item["phone"] = ", ".join(phones[:2])
+        if websites:
+            item["website"] = websites[0]
+        if not item.get("contact") and body_text:
+            cm = re.search(r"联\s*系\s*人\s*[：:]\s*([^\s(（\n,，;；:：]{1,20}(?:\s+[A-Za-z]{1,15})?)", body_text)
+            if cm:
+                item["contact"] = cm.group(1).strip()
 
         date_match = re.search(r"(202[456]-\d{2}-\d{2})", html)
         if date_match:
@@ -403,6 +448,10 @@ def scrape_51ca_services(
                     "body": combined_body[:1200],
                     "url": it["url"],
                     "author": it["contact"] or "51ca_provider",
+                    "contact_name": it.get("contact") or "",
+                    "phone": it.get("phone") or "",
+                    "email": it.get("email") or "",
+                    "website": it.get("website") or "",
                     "price_mention": "",
                     "posted_at": it["posted_date"] or now_iso,
                     "posted_at_exact": bool(it["posted_date"]),

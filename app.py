@@ -331,6 +331,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "Posted At",
                     "Task Category",
                     "Deleted At (Est.)",
+                    "Name",
+                    "Phone Number",
+                    "Email",
+                    "Business Site",
                 ]
             )
             for p in posts:
@@ -358,6 +362,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         p.get("posted_at"),
                         p.get("sub_service"),
                         p.get("deleted_at") or "",
+                        p.get("contact_name") or "",
+                        p.get("phone") or "",
+                        p.get("email") or "",
+                        p.get("website") or "",
                     ]]
                 )
             csv_bytes = output.getvalue().encode("utf-8-sig")

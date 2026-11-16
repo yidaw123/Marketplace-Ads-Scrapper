@@ -276,6 +276,10 @@ def init_db() -> None:
             body TEXT DEFAULT '',
             url TEXT NOT NULL,
             author TEXT DEFAULT '',
+            contact_name TEXT DEFAULT '',
+            phone TEXT DEFAULT '',
+            email TEXT DEFAULT '',
+            website TEXT DEFAULT '',
             price_mention TEXT DEFAULT '',
             posted_at TEXT NOT NULL,
             scraped_at TEXT NOT NULL,
@@ -338,6 +342,9 @@ def init_db() -> None:
         cur.execute("UPDATE posts SET last_seen_at = scraped_at WHERE last_seen_at = '' OR last_seen_at IS NULL")
     if "deleted_at" not in existing_cols:
         cur.execute("ALTER TABLE posts ADD COLUMN deleted_at TEXT DEFAULT ''")
+    for col_name in ("contact_name", "phone", "email", "website"):
+        if col_name not in existing_cols:
+            cur.execute(f"ALTER TABLE posts ADD COLUMN {col_name} TEXT DEFAULT ''")
 
     # Seed or upgrade regions setting so new Canadian provinces/cities are always present
     cur.execute("SELECT value FROM settings WHERE key = 'regions'")
@@ -509,6 +516,24 @@ def upsert_post(post: Dict[str, Any], force: bool = False) -> bool:
             cur.execute("UPDATE posts SET body = ? WHERE external_id = ?", (post["body"], post["external_id"]))
         if post.get("posted_at_exact") and post.get("posted_at"):
             cur.execute("UPDATE posts SET posted_at = ? WHERE external_id = ?", (post["posted_at"], post["external_id"]))
+        if any(k in post for k in ("contact_name", "phone", "email", "website")):
+            cur.execute(
+                """
+                UPDATE posts SET
+                    contact_name = ?,
+                    phone = ?,
+                    email = ?,
+                    website = ?
+                WHERE external_id = ?
+                """,
+                (
+                    post.get("contact_name", ""),
+                    post.get("phone", ""),
+                    post.get("email", ""),
+                    post.get("website", ""),
+                    post["external_id"],
+                ),
+            )
         if not force:
             cur.execute(
                 "UPDATE posts SET score = ?, num_comments = ?, last_seen_at = ?, deleted_at = '' WHERE external_id = ?",
@@ -577,12 +602,13 @@ def upsert_post(post: Dict[str, Any], force: bool = False) -> bool:
             """
             INSERT INTO posts (
                 external_id, platform, source_detail, country, province, city_region, neighborhood,
-                title, body, url, author, price_mention, price_value, price_type, posted_at, scraped_at,
+                title, body, url, author, contact_name, phone, email, website,
+                price_mention, price_value, price_type, posted_at, scraped_at,
                 last_seen_at, deleted_at,
                 intent_type, intent_score, primary_category, sub_service, secondary_categories,
                 urgency, diy_difficulty, extracted_pain_point, marketing_angle,
                 classified_by, score, num_comments
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 post["external_id"],
@@ -596,6 +622,10 @@ def upsert_post(post: Dict[str, Any], force: bool = False) -> bool:
                 post.get("body", ""),
                 post["url"],
                 post.get("author", "anonymous"),
+                post.get("contact_name", ""),
+                post.get("phone", ""),
+                post.get("email", ""),
+                post.get("website", ""),
                 post.get("price_mention", ""),
                 float(post.get("price_value") or 0.0),
                 post.get("price_type", ""),
