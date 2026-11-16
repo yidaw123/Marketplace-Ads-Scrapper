@@ -384,14 +384,15 @@ _NON_NAME_WORDS = {
 }
 
 _EXCLUDED_EMAIL_DOMAINS = {
-    "51.ca", "craigslist.org", "kijiji.ca", "reddit.com",
+    "51.ca", "craigslist.org", "kijiji.ca", "reddit.com", "bark.com",
     "example.com", "email.com", "yourdomain.com", "domain.com", "test.com",
 }
 
 _EXCLUDED_SITE_DOMAINS = {
     "reddit.com", "redd.it", "imgur.com", "postimg.cc", "wikimedia.org", "wikipedia.org",
     "stackexchange.com", "stackoverflow.com", "sstatic.net", "craigslist.org", "kijiji.ca",
-    "51.ca", "ccue.com", "youtube.com", "youtu.be", "google.com", "goo.gl", "bit.ly",
+    "51.ca", "ccue.com", "bark.com", "trustpilot.com", "amazonaws.com", "nextdoor.com",
+    "youtube.com", "youtu.be", "google.com", "goo.gl", "bit.ly",
     "tinyurl.com", "facebook.com", "fb.com", "instagram.com", "twitter.com", "x.com",
     "tiktok.com", "linkedin.com", "amazon.com", "amazon.ca", "homedepot.com", "homedepot.ca",
     "lowes.com", "lowes.ca", "rona.ca", "canadiantire.ca", "menards.com", "acehardware.com",
@@ -608,6 +609,7 @@ def classify_post_rules(post: Dict[str, Any]) -> Dict[str, Any]:
     # Platform/channel contextual signals
     is_cl_hss = platform == "craigslist" and "/hss" in source_detail
     is_51ca_yp = platform == "51ca"
+    is_bark_yp = platform == "bark"
     is_cl_gig = (
         (platform == "craigslist" and ("/lbg" in source_detail or "/dmg" in source_detail or "/cwg" in source_detail))
         or (platform == "kijiji" and "wanted" in source_detail)
@@ -625,8 +627,8 @@ def classify_post_rules(post: Dict[str, Any]) -> Dict[str, Any]:
     elif is_job_posting:
         intent_type = "job_posting"
         intent_score = 40
-    elif is_51ca_yp and hiring_hits == 0:
-        # 51.ca Yellow Pages directory listings are service providers offering work
+    elif (is_51ca_yp or is_bark_yp) and hiring_hits == 0:
+        # 51.ca Yellow Pages and Bark.com directory listings are service providers offering work
         intent_type = "service_provider_ad"
         intent_score = 35
     elif is_cl_hss and (hiring_hits == 0 or provider_hits > 0):

@@ -690,7 +690,7 @@ def mark_missing_posts_deleted(raw_posts: List[Dict[str, Any]], scrape_timestamp
             if ext_id in seen_ids:
                 continue
             row_posted = str(row["posted_at"] or "")
-            if platform in ("kijiji", "craigslist", "51ca") or (min_posted_at and row_posted >= min_posted_at):
+            if platform in ("kijiji", "craigslist", "51ca", "bark") or (min_posted_at and row_posted >= min_posted_at):
                 cur.execute(
                     "UPDATE posts SET deleted_at = ? WHERE external_id = ?",
                     (scrape_timestamp, ext_id),

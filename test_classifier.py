@@ -156,6 +156,21 @@ class ContactInfoTests(unittest.TestCase):
         self.assertEqual(c["email"], "")
         self.assertEqual(c["website"], "www.365ds.ca")
 
+    def test_bark_provider_classified_with_contact_info(self):
+        r = classify_post_rules(
+            {
+                "title": "Wilson Contracting Co. — Handyman (Toronto / GTA, ON)",
+                "body": "Competitive pricing for door repairs, drywall patching, and electrical.",
+                "platform": "bark",
+                "source_detail": "bark.com (Handyman)",
+                "contact_name": "Wilson Contracting Co.",
+                "website": "https://www.wilsoncontracting.ca",
+            }
+        )
+        self.assertEqual(r["intent_type"], "service_provider_ad")
+        self.assertEqual(r["contact_name"], "Wilson Contracting Co.")
+        self.assertEqual(r["website"], "https://www.wilsoncontracting.ca")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

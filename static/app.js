@@ -1476,8 +1476,8 @@ function renderRegionPage() {
 
   const chEl = document.getElementById("top-channels-list");
   if (chEl) {
-    const platNames = { reddit: "Reddit", craigslist: "Craigslist", kijiji: "Kijiji", "51ca": "51.ca", stackexchange: "StackExchange" };
-    const platClasses = { reddit: "b-reddit", craigslist: "b-craigslist", kijiji: "b-kijiji", "51ca": "b-51ca", stackexchange: "b-stackexchange" };
+    const platNames = { reddit: "Reddit", craigslist: "Craigslist", kijiji: "Kijiji", "51ca": "51.ca", bark: "Bark.com", stackexchange: "StackExchange" };
+    const platClasses = { reddit: "b-reddit", craigslist: "b-craigslist", kijiji: "b-kijiji", "51ca": "b-51ca", bark: "b-bark", stackexchange: "b-stackexchange" };
     const platforms = (summaryData && summaryData.platform_breakdown) ? summaryData.platform_breakdown : [];
     const platHtml = [...platforms]
       .sort((a, b) => (b.total || 0) - (a.total || 0))
@@ -1817,6 +1817,8 @@ function renderPostsPage() {
       ? `<span class="badge b-kijiji">Kijiji</span>`
       : p.platform === "51ca"
       ? `<span class="badge b-51ca">51.ca</span>`
+      : p.platform === "bark"
+      ? `<span class="badge b-bark">Bark.com</span>`
       : p.platform === "stackexchange"
       ? `<span class="badge b-stackexchange">StackExchange</span>`
       : `<span class="badge b-craigslist">Craigslist</span>`;
@@ -2040,7 +2042,7 @@ function classifyPostClientSide(post) {
   let website = "";
   if (intent_type !== "diy_help_needed" && intent_type !== "irrelevant") {
     const urlMatches = rawText.match(/(?:https?:\/\/|www\.)[A-Za-z0-9.-]+\.[A-Za-z]{2,10}(?:\/[^\s)<\]"']*)?/gi) || [];
-    const blockedHost = /(reddit\.com|redd\.it|imgur\.com|postimg\.cc|stackexchange\.com|sstatic\.net|craigslist\.org|kijiji\.ca|51\.ca|youtube\.com|youtu\.be|google\.com|facebook\.com|instagram\.com|twitter\.com|x\.com|amazon\.|homedepot\.|lowes\.|wayfair\.|ikea\.|taskrabbit\.com|\.gov$)/i;
+    const blockedHost = /(reddit\.com|redd\.it|imgur\.com|postimg\.cc|stackexchange\.com|sstatic\.net|craigslist\.org|kijiji\.ca|51\.ca|bark\.com|trustpilot\.com|amazonaws\.com|nextdoor\.com|youtube\.com|youtu\.be|google\.com|facebook\.com|instagram\.com|twitter\.com|x\.com|amazon\.|homedepot\.|lowes\.|wayfair\.|ikea\.|taskrabbit\.com|\.gov$)/i;
     website = (urlMatches.map(u => u.replace(/[.,;:!?)]+$/, "")).find(u => !blockedHost.test(u) && !/\.(jpg|jpeg|png|gif|webp|pdf)$/i.test(u))) || "";
   }
   const nameMatch = rawText.match(/\b(?:[Cc]ontact|[Cc]all or [Tt]ext|[Cc]all\/[Tt]ext|[Aa]sk for|[Mm]y name is|(?:[Hh]i|[Hh]ello),?\s*[Ii]['’]m)\s+([A-Z][a-z]{2,15}(?:\s+[A-Z][a-z]{2,15})?)\b/);
@@ -2219,7 +2221,7 @@ async function triggerScrape() {
         resp = await fetchWithTimeout(`${apiBase}/api/scrape`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ platforms: ["reddit", "craigslist", "kijiji", "stackexchange", "51ca"], include_national_reddit: true }),
+          body: JSON.stringify({ platforms: ["reddit", "craigslist", "kijiji", "stackexchange", "51ca", "bark"], include_national_reddit: true }),
         }, 240000);
       } catch (_bridgeErr) {
         if (!apiBase) throw _bridgeErr;
