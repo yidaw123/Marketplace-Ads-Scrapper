@@ -338,7 +338,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "City", "Province / State", "Country",
                     "Audience Count", "Audience Tier", "Trade Category", "Task Category",
                     "Business Email", "Website / Link Hub", "YouTube URL", "Instagram URL",
-                    "TikTok URL", "Facebook URL", "X / Twitter URL", "Twitch URL", "Bluesky URL",
+                    "TikTok URL", "Facebook URL", "X / Twitter URL", "Bluesky URL",
                     "Bio",
                 ]
             )
@@ -363,7 +363,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         c.get("tiktok_url"),
                         c.get("facebook_url"),
                         c.get("x_url"),
-                        c.get("twitch_url"),
                         c.get("bluesky_url"),
                         c.get("bio"),
                     ]]

@@ -2573,8 +2573,8 @@ async function switchMainTab(tabName) {
 
 function computeStaticCreatorsSummary(snap) {
   const creators = snap.creators || [];
-  let withEmail = 0, onYt = 0, onIg = 0, onTt = 0, onFb = 0, onX = 0, onTw = 0, onBsky = 0;
-  let onOther = 0, microMid = 0, northAm = 0;
+  let withEmail = 0, onYt = 0, onIg = 0, onTt = 0, onFb = 0, onX = 0, onBsky = 0;
+  let microMid = 0, northAm = 0;
   const tierCounts = { nano: 0, micro: 0, mid: 0, macro: 0, mega: 0 };
   const provByCountry = { "United States": new Set(), "Canada": new Set() };
   const cityByCountry = { "United States": new Set(), "Canada": new Set() };
@@ -2590,9 +2590,7 @@ function computeStaticCreatorsSummary(snap) {
     const hasTt = Boolean((c.tiktok_url || "").trim());
     const hasFb = Boolean((c.facebook_url || "").trim());
     const hasX = Boolean((c.x_url || "").trim());
-    const hasTw = Boolean((c.twitch_url || "").trim());
     const hasBsky = Boolean((c.bluesky_url || "").trim());
-    const hasOther = hasX || hasFb || hasTw;
 
     if (hasEmail) withEmail++;
     if (hasYt) onYt++;
@@ -2600,9 +2598,7 @@ function computeStaticCreatorsSummary(snap) {
     if (hasTt) onTt++;
     if (hasFb) onFb++;
     if (hasX) onX++;
-    if (hasTw) onTw++;
     if (hasBsky) onBsky++;
-    if (hasOther) onOther++;
     if (c.audience_tier === "micro" || c.audience_tier === "mid") microMid++;
     if (Object.prototype.hasOwnProperty.call(tierCounts, c.audience_tier)) {
       tierCounts[c.audience_tier]++;
@@ -2651,9 +2647,7 @@ function computeStaticCreatorsSummary(snap) {
       on_tiktok: onTt,
       on_facebook: onFb,
       on_x: onX,
-      on_twitch: onTw,
       on_bluesky: onBsky,
-      on_x_fb_twitch: onOther,
       micro_mid_tier: microMid,
       north_america: northAm,
     },
@@ -2706,7 +2700,6 @@ function renderCreatorsKPIs(kpis, tierCounts = {}) {
   setVal("splat-count-tiktok", kpis.on_tiktok);
   setVal("splat-count-facebook", kpis.on_facebook);
   setVal("splat-count-x", kpis.on_x);
-  setVal("splat-count-twitch", kpis.on_twitch);
   setVal("splat-count-bluesky", kpis.on_bluesky);
 
   setVal("stier-count-all", kpis.total_creators);
@@ -2922,7 +2915,7 @@ async function loadCreators() {
     const q = search.trim().toLowerCase();
     const platColMap = {
       instagram: "instagram_url", tiktok: "tiktok_url", youtube: "youtube_url",
-      facebook: "facebook_url", x: "x_url", twitch: "twitch_url", bluesky: "bluesky_url",
+      facebook: "facebook_url", x: "x_url", bluesky: "bluesky_url",
     };
     const filtered = (snap.creators || []).filter(c => {
       if (category !== "all" && c.primary_category !== category) return false;
@@ -3046,7 +3039,6 @@ function renderCreatorsPage() {
     ["tiktok_url", "TikTok", "sp-tt"],
     ["facebook_url", "Facebook", "sp-fb"],
     ["x_url", "X", "sp-x"],
-    ["twitch_url", "Twitch", "sp-tw"],
     ["bluesky_url", "Bluesky", "sp-bsky"],
   ];
 
@@ -3138,7 +3130,7 @@ function handleExportCreatorsCsv(evt) {
     "Creator ID", "Name", "Handle", "Primary Platform", "City", "Province / State", "Country",
     "Audience Count", "Audience Tier", "Trade Category", "Task Category",
     "Business Email", "Website / Link Hub", "YouTube URL", "Instagram URL",
-    "TikTok URL", "Facebook URL", "X / Twitter URL", "Twitch URL", "Bluesky URL", "Bio",
+    "TikTok URL", "Facebook URL", "X / Twitter URL", "Bluesky URL", "Bio",
   ];
   const rowArrays = rows.map(c => {
     const isUsOrCa = c.country === "United States" || c.country === "Canada";
@@ -3149,7 +3141,7 @@ function handleExportCreatorsCsv(evt) {
       c.country || "",
       c.audience_count, c.audience_tier, c.primary_category, c.sub_service,
       c.business_email || "", c.website || "", c.youtube_url || "", c.instagram_url || "",
-      c.tiktok_url || "", c.facebook_url || "", c.x_url || "", c.twitch_url || "", c.bluesky_url || "",
+      c.tiktok_url || "", c.facebook_url || "", c.x_url || "", c.bluesky_url || "",
       c.bio || "",
     ];
   });

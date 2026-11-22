@@ -1468,7 +1468,6 @@ def query_creators(
         "youtube": "youtube_url",
         "facebook": "facebook_url",
         "x": "x_url",
-        "twitch": "twitch_url",
         "bluesky": "bluesky_url",
     }
     if social_platform and social_platform in plat_col_map:
@@ -1548,9 +1547,7 @@ def get_creators_summary() -> Dict[str, Any]:
             SUM(CASE WHEN COALESCE(tiktok_url, '') != '' THEN 1 ELSE 0 END) as on_tiktok,
             SUM(CASE WHEN COALESCE(facebook_url, '') != '' THEN 1 ELSE 0 END) as on_facebook,
             SUM(CASE WHEN COALESCE(x_url, '') != '' THEN 1 ELSE 0 END) as on_x,
-            SUM(CASE WHEN COALESCE(twitch_url, '') != '' THEN 1 ELSE 0 END) as on_twitch,
             SUM(CASE WHEN COALESCE(bluesky_url, '') != '' THEN 1 ELSE 0 END) as on_bluesky,
-            SUM(CASE WHEN COALESCE(x_url, '') != '' OR COALESCE(facebook_url, '') != '' OR COALESCE(twitch_url, '') != '' THEN 1 ELSE 0 END) as on_x_fb_twitch,
             SUM(CASE WHEN audience_tier IN ('micro', 'mid') THEN 1 ELSE 0 END) as micro_mid_tier,
             SUM(CASE WHEN country IN ('Canada', 'United States') THEN 1 ELSE 0 END) as north_america,
             SUM(CASE WHEN audience_tier = 'nano' THEN 1 ELSE 0 END) as tier_nano,
@@ -1570,9 +1567,7 @@ def get_creators_summary() -> Dict[str, Any]:
         "on_tiktok": (kpi_row["on_tiktok"] or 0) if kpi_row else 0,
         "on_facebook": (kpi_row["on_facebook"] or 0) if kpi_row else 0,
         "on_x": (kpi_row["on_x"] or 0) if kpi_row else 0,
-        "on_twitch": (kpi_row["on_twitch"] or 0) if kpi_row else 0,
         "on_bluesky": (kpi_row["on_bluesky"] or 0) if kpi_row else 0,
-        "on_x_fb_twitch": (kpi_row["on_x_fb_twitch"] or 0) if kpi_row else 0,
         "micro_mid_tier": (kpi_row["micro_mid_tier"] or 0) if kpi_row else 0,
         "north_america": (kpi_row["north_america"] or 0) if kpi_row else 0,
     }

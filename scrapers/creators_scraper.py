@@ -168,7 +168,6 @@ def _classify_creator_links(raw_urls: List[str]) -> Dict[str, Any]:
         "tiktok_url": "",
         "facebook_url": "",
         "x_url": "",
-        "twitch_url": "",
         "bluesky_url": "",
         "website": "",
         "link_hubs": [],
@@ -195,8 +194,6 @@ def _classify_creator_links(raw_urls: List[str]) -> Dict[str, Any]:
                 res["facebook_url"] = norm
         elif ("twitter.com" in host or host == "x.com" or host == "www.x.com") and not res["x_url"]:
             res["x_url"] = norm
-        elif "twitch.tv" in host and not res["twitch_url"]:
-            res["twitch_url"] = norm
         elif "bsky.app" in host and not res["bluesky_url"]:
             res["bluesky_url"] = norm
         elif any(hub in host for hub in _LINK_HUB_HOSTS):
@@ -284,7 +281,7 @@ def _extract_page_signals(url: str, timeout: int = 5) -> Tuple[List[str], List[s
         return [], [], ""
     emails = _extract_clean_emails(html)
     social_urls = re.findall(
-        r"https?://(?:www\.)?(?:instagram\.com|tiktok\.com|facebook\.com|twitter\.com|x\.com|twitch\.tv|bsky\.app)/[A-Za-z0-9._/@-]+",
+        r"https?://(?:www\.)?(?:instagram\.com|tiktok\.com|facebook\.com|twitter\.com|x\.com|bsky\.app)/[A-Za-z0-9._/@-]+",
         html,
         re.IGNORECASE,
     )
@@ -349,7 +346,7 @@ def _fetch_youtube_creator_profile(seed: Dict[str, str]) -> Optional[Dict[str, A
     ]
     raw_links.extend(
         re.findall(
-            r"(?:https?://)?(?:www\.)?(?:linktr\.ee|beacons\.ai|stan\.store|instagram\.com|tiktok\.com|facebook\.com|twitter\.com|x\.com|twitch\.tv)/[A-Za-z0-9._/@-]+",
+            r"(?:https?://)?(?:www\.)?(?:linktr\.ee|beacons\.ai|stan\.store|instagram\.com|tiktok\.com|facebook\.com|twitter\.com|x\.com)/[A-Za-z0-9._/@-]+",
             desc,
             re.IGNORECASE,
         )
@@ -368,7 +365,7 @@ def _fetch_youtube_creator_profile(seed: Dict[str, str]) -> Optional[Dict[str, A
                 emails.append(em)
         if hub_socials:
             extra = _classify_creator_links(hub_socials)
-            for k in ("instagram_url", "tiktok_url", "facebook_url", "x_url", "twitch_url", "bluesky_url"):
+            for k in ("instagram_url", "tiktok_url", "facebook_url", "x_url", "bluesky_url"):
                 if not socials[k] and extra[k]:
                     socials[k] = extra[k]
 
@@ -386,7 +383,7 @@ def _fetch_youtube_creator_profile(seed: Dict[str, str]) -> Optional[Dict[str, A
             emails.extend(em for em in c_emails if em not in emails)
         if site_socials:
             extra = _classify_creator_links(site_socials)
-            for k in ("instagram_url", "tiktok_url", "facebook_url", "x_url", "twitch_url"):
+            for k in ("instagram_url", "tiktok_url", "facebook_url", "x_url"):
                 if not socials[k] and extra[k]:
                     socials[k] = extra[k]
 
@@ -414,7 +411,6 @@ def _fetch_youtube_creator_profile(seed: Dict[str, str]) -> Optional[Dict[str, A
         "tiktok_url": socials["tiktok_url"],
         "facebook_url": socials["facebook_url"],
         "x_url": socials["x_url"],
-        "twitch_url": socials["twitch_url"],
         "bluesky_url": socials["bluesky_url"],
     }
 
@@ -456,7 +452,7 @@ def _fetch_bluesky_creator(actor: Dict[str, Any], default_category: str, seed_to
         emails.extend(he)
         if hs:
             extra = _classify_creator_links(hs)
-            for k in ("instagram_url", "tiktok_url", "facebook_url", "x_url", "twitch_url"):
+            for k in ("instagram_url", "tiktok_url", "facebook_url", "x_url"):
                 if not socials[k] and extra[k]:
                     socials[k] = extra[k]
 
@@ -481,7 +477,6 @@ def _fetch_bluesky_creator(actor: Dict[str, Any], default_category: str, seed_to
         "tiktok_url": socials["tiktok_url"],
         "facebook_url": socials["facebook_url"],
         "x_url": socials["x_url"],
-        "twitch_url": socials["twitch_url"],
         "bluesky_url": bsky_url,
     }
 
@@ -527,7 +522,7 @@ def scrape_diy_creators(
     """
     Discovers DIY / Home-Improvement creators across YouTube and Bluesky,
     follows Linktree/bio links and websites to extract business outreach emails and
-    cross-platform social handles (Instagram, TikTok, Facebook, X/Twitter, Twitch, YouTube),
+    cross-platform social handles (Instagram, TikTok, Facebook, X/Twitter, YouTube),
     and returns normalized creator records.
     """
     seed_by_nav: Dict[str, Dict[str, str]] = {}
