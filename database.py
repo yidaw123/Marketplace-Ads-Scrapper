@@ -324,6 +324,37 @@ def init_db() -> None:
         """
     )
 
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS creators (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            creator_id TEXT UNIQUE NOT NULL,
+            name TEXT NOT NULL,
+            handle TEXT DEFAULT '',
+            primary_platform TEXT NOT NULL,
+            profile_url TEXT NOT NULL,
+            country TEXT DEFAULT '',
+            audience_count INTEGER DEFAULT 0,
+            audience_text TEXT DEFAULT '',
+            audience_tier TEXT DEFAULT 'micro',
+            primary_category TEXT NOT NULL,
+            sub_service TEXT DEFAULT '',
+            secondary_categories TEXT DEFAULT '[]',
+            bio TEXT DEFAULT '',
+            business_email TEXT DEFAULT '',
+            website TEXT DEFAULT '',
+            youtube_url TEXT DEFAULT '',
+            instagram_url TEXT DEFAULT '',
+            tiktok_url TEXT DEFAULT '',
+            facebook_url TEXT DEFAULT '',
+            x_url TEXT DEFAULT '',
+            twitch_url TEXT DEFAULT '',
+            bluesky_url TEXT DEFAULT '',
+            scraped_at TEXT NOT NULL
+        )
+        """
+    )
+
     # Schema migration for existing DBs: add country, province, sub_service, price_value, price_type columns if missing
     cur.execute("PRAGMA table_info(posts)")
     existing_cols = {row["name"] for row in cur.fetchall()}
@@ -1260,4 +1291,263 @@ def get_demand_trends(
         "min_date": min_dt.strftime("%Y-%m-%d"),
         "max_date": today_dt.strftime("%Y-%m-%d"),
         "latest_month_label": month_abbr[max_dt.month - 1],
+    }
+
+
+def get_all_creator_ids() -> set:
+    """Return all creator_ids currently stored in the creators table."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT creator_id FROM creators")
+    found = {r["creator_id"] for r in cur.fetchall()}
+    conn.close()
+    return found
+
+
+def upsert_creator(creator: Dict[str, Any]) -> bool:
+    """Insert or update a DIY affiliate creator row by creator_id. Returns True if newly inserted."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM creators WHERE creator_id = ?", (creator["creator_id"],))
+    existing = cur.fetchone()
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    secondary_json = (
+        json.dumps(creator.get("secondary_categories", []))
+        if isinstance(creator.get("secondary_categories"), list)
+        else str(creator.get("secondary_categories", "[]"))
+    )
+
+    if existing:
+        cur.execute(
+            """
+            UPDATE creators SET
+                name = ?,
+                handle = ?,
+                primary_platform = ?,
+                profile_url = ?,
+                country = ?,
+                audience_count = ?,
+                audience_text = ?,
+                audience_tier = ?,
+                primary_category = ?,
+                sub_service = ?,
+                secondary_categories = ?,
+                bio = ?,
+                business_email = ?,
+                website = ?,
+                youtube_url = ?,
+                instagram_url = ?,
+                tiktok_url = ?,
+                facebook_url = ?,
+                x_url = ?,
+                twitch_url = ?,
+                bluesky_url = ?,
+                scraped_at = ?
+            WHERE creator_id = ?
+            """,
+            (
+                creator.get("name", ""),
+                creator.get("handle", ""),
+                creator.get("primary_platform", "youtube"),
+                creator.get("profile_url", ""),
+                creator.get("country", ""),
+                int(creator.get("audience_count") or 0),
+                creator.get("audience_text", ""),
+                creator.get("audience_tier", "micro"),
+                creator.get("primary_category", "General Handyman & Odd Jobs"),
+                creator.get("sub_service", ""),
+                secondary_json,
+                creator.get("bio", ""),
+                creator.get("business_email", ""),
+                creator.get("website", ""),
+                creator.get("youtube_url", ""),
+                creator.get("instagram_url", ""),
+                creator.get("tiktok_url", ""),
+                creator.get("facebook_url", ""),
+                creator.get("x_url", ""),
+                creator.get("twitch_url", ""),
+                creator.get("bluesky_url", ""),
+                now_iso,
+                creator["creator_id"],
+            ),
+        )
+        conn.commit()
+        conn.close()
+        return False
+
+    cur.execute(
+        """
+        INSERT INTO creators (
+            creator_id, name, handle, primary_platform, profile_url, country,
+            audience_count, audience_text, audience_tier, primary_category, sub_service,
+            secondary_categories, bio, business_email, website,
+            youtube_url, instagram_url, tiktok_url, facebook_url, x_url, twitch_url, bluesky_url,
+            scraped_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            creator["creator_id"],
+            creator.get("name", ""),
+            creator.get("handle", ""),
+            creator.get("primary_platform", "youtube"),
+            creator.get("profile_url", ""),
+            creator.get("country", ""),
+            int(creator.get("audience_count") or 0),
+            creator.get("audience_text", ""),
+            creator.get("audience_tier", "micro"),
+            creator.get("primary_category", "General Handyman & Odd Jobs"),
+            creator.get("sub_service", ""),
+            secondary_json,
+            creator.get("bio", ""),
+            creator.get("business_email", ""),
+            creator.get("website", ""),
+            creator.get("youtube_url", ""),
+            creator.get("instagram_url", ""),
+            creator.get("tiktok_url", ""),
+            creator.get("facebook_url", ""),
+            creator.get("x_url", ""),
+            creator.get("twitch_url", ""),
+            creator.get("bluesky_url", ""),
+            now_iso,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def query_creators(
+    category: Optional[str] = None,
+    sub_service: Optional[str] = None,
+    social_platform: Optional[str] = None,
+    tier: Optional[str] = None,
+    contact_filter: Optional[str] = None,
+    country: Optional[str] = None,
+    search: Optional[str] = None,
+    limit: int = 1000,
+) -> List[Dict[str, Any]]:
+    """Query DIY affiliate creators filtered by trade/task category, social presence, tier, and contact availability."""
+    conn = get_connection()
+    cur = conn.cursor()
+
+    clauses: List[str] = ["1=1"]
+    params: List[Any] = []
+
+    if category and category != "all":
+        clauses.append("primary_category = ?")
+        params.append(category)
+
+    if sub_service and sub_service != "all":
+        clauses.append("sub_service = ?")
+        params.append(sub_service)
+
+    plat_col_map = {
+        "instagram": "instagram_url",
+        "tiktok": "tiktok_url",
+        "youtube": "youtube_url",
+        "facebook": "facebook_url",
+        "x": "x_url",
+        "twitch": "twitch_url",
+        "bluesky": "bluesky_url",
+    }
+    if social_platform and social_platform in plat_col_map:
+        col = plat_col_map[social_platform]
+        clauses.append(f"COALESCE({col}, '') != ''")
+
+    if tier and tier != "all":
+        if tier == "micro_mid":
+            clauses.append("audience_tier IN ('micro', 'mid')")
+        else:
+            clauses.append("audience_tier = ?")
+            params.append(tier)
+
+    if contact_filter == "has_email":
+        clauses.append("COALESCE(business_email, '') != ''")
+    elif contact_filter == "has_contact":
+        clauses.append("(COALESCE(business_email, '') != '' OR COALESCE(website, '') != '')")
+
+    if country and country != "all":
+        if country == "Other":
+            clauses.append("COALESCE(country, '') NOT IN ('Canada', 'United States')")
+        else:
+            clauses.append("country = ?")
+            params.append(country)
+
+    if search and search.strip():
+        q = f"%{search.strip()}%"
+        clauses.append(
+            "(name LIKE ? OR handle LIKE ? OR bio LIKE ? OR business_email LIKE ? OR website LIKE ?)"
+        )
+        params.extend([q, q, q, q, q])
+
+    where_sql = " AND ".join(clauses)
+    sql = f"""
+        SELECT * FROM creators
+        WHERE {where_sql}
+        ORDER BY
+            (CASE WHEN COALESCE(business_email, '') != '' THEN 0 ELSE 1 END) ASC,
+            audience_count DESC
+        LIMIT ?
+    """
+    params.append(limit)
+    cur.execute(sql, params)
+    rows = [dict(r) for r in cur.fetchall()]
+    for r in rows:
+        try:
+            r["secondary_categories"] = json.loads(r.get("secondary_categories") or "[]")
+        except Exception:
+            r["secondary_categories"] = []
+    conn.close()
+    return rows
+
+
+def get_creators_summary() -> Dict[str, Any]:
+    """Return KPI counts and per-trade category breakdown for affiliate DIY creators."""
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT
+            COUNT(*) as total_creators,
+            SUM(CASE WHEN COALESCE(business_email, '') != '' THEN 1 ELSE 0 END) as with_email,
+            SUM(CASE WHEN COALESCE(instagram_url, '') != '' THEN 1 ELSE 0 END) as on_instagram,
+            SUM(CASE WHEN COALESCE(tiktok_url, '') != '' THEN 1 ELSE 0 END) as on_tiktok,
+            SUM(CASE WHEN COALESCE(x_url, '') != '' OR COALESCE(facebook_url, '') != '' OR COALESCE(twitch_url, '') != '' THEN 1 ELSE 0 END) as on_x_fb_twitch,
+            SUM(CASE WHEN audience_tier IN ('micro', 'mid') THEN 1 ELSE 0 END) as micro_mid_tier,
+            SUM(CASE WHEN country IN ('Canada', 'United States') THEN 1 ELSE 0 END) as north_america
+        FROM creators
+        """
+    )
+    kpi_row = cur.fetchone()
+    kpis = {
+        "total_creators": (kpi_row["total_creators"] or 0) if kpi_row else 0,
+        "with_email": (kpi_row["with_email"] or 0) if kpi_row else 0,
+        "on_instagram": (kpi_row["on_instagram"] or 0) if kpi_row else 0,
+        "on_tiktok": (kpi_row["on_tiktok"] or 0) if kpi_row else 0,
+        "on_x_fb_twitch": (kpi_row["on_x_fb_twitch"] or 0) if kpi_row else 0,
+        "micro_mid_tier": (kpi_row["micro_mid_tier"] or 0) if kpi_row else 0,
+        "north_america": (kpi_row["north_america"] or 0) if kpi_row else 0,
+    }
+
+    cur.execute(
+        """
+        SELECT
+            primary_category,
+            COUNT(*) as total_creators,
+            SUM(CASE WHEN COALESCE(business_email, '') != '' THEN 1 ELSE 0 END) as with_email,
+            SUM(CASE WHEN COALESCE(instagram_url, '') != '' THEN 1 ELSE 0 END) as on_instagram,
+            SUM(CASE WHEN COALESCE(tiktok_url, '') != '' THEN 1 ELSE 0 END) as on_tiktok
+        FROM creators
+        GROUP BY primary_category
+        ORDER BY total_creators DESC, with_email DESC
+        """
+    )
+    category_breakdown = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    return {
+        "kpis": kpis,
+        "category_breakdown": category_breakdown,
     }

@@ -11,7 +11,9 @@ from typing import Dict, Any, List
 from database import (
     init_db,
     query_posts,
+    query_creators,
     get_analytics_summary,
+    get_creators_summary,
     get_demand_trends,
     get_setting,
     set_setting,
@@ -21,17 +23,19 @@ from database import (
     DEFAULT_SEARCH_KEYWORDS,
 )
 from classifier import SERVICE_CATEGORIES, SUB_SERVICES, classify_post_rules, enrich_posts_with_llm
-from pipeline import run_scrape_pipeline
+from pipeline import run_scrape_pipeline, run_creators_scrape_pipeline
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(ROOT_DIR, "static")
 SCRAPE_LOCK = threading.Lock()
+CREATORS_SCRAPE_LOCK = threading.Lock()
 
 
 def export_static_snapshot() -> None:
     """Writes static/snapshot.json and syncs root index.html for GitHub Pages hosting."""
     try:
         posts = query_posts(intent_type="all", limit=5000)
+        creators = query_creators(limit=2000)
         sub_map = {k: [t[0] for t in v] for k, v in SUB_SERVICES.items()}
         snap = {
             "categories_list": list(SERVICE_CATEGORIES.keys()),
@@ -42,6 +46,7 @@ def export_static_snapshot() -> None:
                 "search_keywords": get_setting("search_keywords", DEFAULT_SEARCH_KEYWORDS),
             },
             "posts": posts,
+            "creators": creators,
         }
         snap_path = os.path.join(STATIC_DIR, "snapshot.json")
         with open(snap_path, "w", encoding="utf-8") as f:
@@ -289,6 +294,85 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_json({"posts": posts, "count": len(posts)})
             return
 
+        if path == "/api/creators/summary":
+            summary = get_creators_summary()
+            summary["categories_list"] = list(SERVICE_CATEGORIES.keys())
+            summary["sub_services_map"] = {k: [t[0] for t in v] for k, v in SUB_SERVICES.items()}
+            self._send_json(summary)
+            return
+
+        if path == "/api/creators":
+            creators = query_creators(
+                category=qs.get("category", ["all"])[0],
+                sub_service=qs.get("sub_service", ["all"])[0],
+                social_platform=qs.get("social_platform", ["all"])[0],
+                tier=qs.get("tier", ["all"])[0],
+                contact_filter=qs.get("contact_filter", ["all"])[0],
+                country=qs.get("country", ["all"])[0],
+                search=qs.get("search", [""])[0],
+                limit=_qs_int(qs, "limit", 1000, 1, 2000),
+            )
+            self._send_json({"creators": creators, "count": len(creators)})
+            return
+
+        if path == "/api/creators/export.csv":
+            creators = query_creators(
+                category=qs.get("category", ["all"])[0],
+                sub_service=qs.get("sub_service", ["all"])[0],
+                social_platform=qs.get("social_platform", ["all"])[0],
+                tier=qs.get("tier", ["all"])[0],
+                contact_filter=qs.get("contact_filter", ["all"])[0],
+                country=qs.get("country", ["all"])[0],
+                search=qs.get("search", [""])[0],
+                limit=2000,
+            )
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(
+                [
+                    "Creator ID", "Name", "Handle", "Primary Platform", "Country",
+                    "Audience Count", "Audience Tier", "Trade Category", "Task Category",
+                    "Business Email", "Website / Link Hub", "YouTube URL", "Instagram URL",
+                    "TikTok URL", "Facebook URL", "X / Twitter URL", "Twitch URL", "Bluesky URL",
+                    "Bio",
+                ]
+            )
+            for c in creators:
+                writer.writerow(
+                    [_csv_safe(v) for v in [
+                        c.get("creator_id"),
+                        c.get("name"),
+                        c.get("handle"),
+                        c.get("primary_platform"),
+                        c.get("country"),
+                        c.get("audience_count"),
+                        c.get("audience_tier"),
+                        c.get("primary_category"),
+                        c.get("sub_service"),
+                        c.get("business_email"),
+                        c.get("website"),
+                        c.get("youtube_url"),
+                        c.get("instagram_url"),
+                        c.get("tiktok_url"),
+                        c.get("facebook_url"),
+                        c.get("x_url"),
+                        c.get("twitch_url"),
+                        c.get("bluesky_url"),
+                        c.get("bio"),
+                    ]]
+                )
+            csv_bytes = output.getvalue().encode("utf-8-sig")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/csv; charset=utf-8")
+            self.send_header(
+                "Content-Disposition",
+                'attachment; filename="diy_affiliate_creators.csv"',
+            )
+            self.send_header("Content-Length", str(len(csv_bytes)))
+            self.end_headers()
+            self.wfile.write(csv_bytes)
+            return
+
         if path == "/api/export.csv":
             posts = query_posts(
                 platform=qs.get("platform", ["all"])[0],
@@ -421,6 +505,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 export_static_snapshot()
             finally:
                 SCRAPE_LOCK.release()
+            self._send_json(result)
+            return
+
+        if path == "/api/scrape-creators":
+            if not CREATORS_SCRAPE_LOCK.acquire(blocking=False):
+                self._send_json({"error": "A creator scrape is already running — please wait."}, 409)
+                return
+            try:
+                max_new = int(body.get("max_new_profiles") or 85)
+                result = run_creators_scrape_pipeline(max_new_profiles=max(10, min(150, max_new)))
+                export_static_snapshot()
+            finally:
+                CREATORS_SCRAPE_LOCK.release()
             self._send_json(result)
             return
 

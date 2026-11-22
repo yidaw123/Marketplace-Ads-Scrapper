@@ -4,7 +4,8 @@ found when auditing scraped data. Run with:  python -m unittest test_classifier.
 """
 import unittest
 
-from classifier import classify_post_rules, extract_contact_info
+from classifier import classify_post_rules, classify_creator, compute_audience_tier, extract_contact_info
+from scrapers.creators_scraper import _extract_clean_emails
 
 
 def classify(title, body="", platform="reddit", source="r/bayarea"):
@@ -170,6 +171,32 @@ class ContactInfoTests(unittest.TestCase):
         self.assertEqual(r["intent_type"], "service_provider_ad")
         self.assertEqual(r["contact_name"], "Wilson Contracting Co.")
         self.assertEqual(r["website"], "https://www.wilsoncontracting.ca")
+
+
+class CreatorClassificationTests(unittest.TestCase):
+    def test_audience_tier_thresholds(self):
+        self.assertEqual(compute_audience_tier(750000), "macro")
+        self.assertEqual(compute_audience_tier(150000), "mid")
+        self.assertEqual(compute_audience_tier(25000), "micro")
+        self.assertEqual(compute_audience_tier(3200), "nano")
+
+    def test_creator_classified_into_trade_and_task_buckets(self):
+        c = classify_creator(
+            {
+                "creator_id": "yt_got2learn",
+                "name": "Got2Learn",
+                "bio": "Plumbing tutorials: soldering copper pipes, fixing leaky shower valves, and unclogging drains.",
+                "audience_count": 638000,
+                "seed_topic": "plumbing leak repair diy",
+            }
+        )
+        self.assertEqual(c["primary_category"], "Plumbing & Drain")
+        self.assertEqual(c["audience_tier"], "macro")
+        self.assertTrue(bool(c["sub_service"]))
+
+    def test_clean_email_rejects_retina_images_and_keeps_business_email(self):
+        sample = "Logo Badge@2x.png support@linktr.ee noreply@site.com Collabs: hello@diycreator.com"
+        self.assertEqual(_extract_clean_emails(sample), ["hello@diycreator.com"])
 
 
 if __name__ == "__main__":

@@ -6,15 +6,17 @@ from database import (
     get_connection,
     get_existing_ids,
     get_all_existing_ids,
+    get_all_creator_ids,
     touch_seen_posts,
     get_setting,
     upsert_post,
+    upsert_creator,
     mark_missing_posts_deleted,
     DEFAULT_REGIONS,
     DEFAULT_NATIONAL_SUBREDDITS,
     DEFAULT_SEARCH_KEYWORDS,
 )
-from classifier import classify_post_rules, enrich_posts_with_llm
+from classifier import classify_post_rules, classify_creator, enrich_posts_with_llm
 from scrapers import (
     scrape_craigslist_region,
     scrape_reddit_city_subreddits,
@@ -23,6 +25,7 @@ from scrapers import (
     scrape_diy_stackexchange,
     scrape_51ca_services,
     scrape_bark_services,
+    scrape_diy_creators,
 )
 
 
@@ -209,4 +212,33 @@ def run_scrape_pipeline(
         "demand_leads_found": demand_leads,
         "deleted_detected": deleted_detected,
         "logs": logs,
+    }
+
+
+def run_creators_scrape_pipeline(max_new_profiles: int = 85) -> Dict[str, Any]:
+    """
+    Discovers DIY & home-improvement creators across YouTube, Bluesky, Twitch, Linktree,
+    and creator websites, classifies them into Trade & Task Categories, and stores
+    affiliate outreach contact info in SQLite.
+    """
+    known_creator_ids = get_all_creator_ids()
+    raw_creators = scrape_diy_creators(
+        existing_ids=known_creator_ids,
+        max_new_profiles=max_new_profiles,
+    )
+
+    new_stored = 0
+    with_email = 0
+    for c in raw_creators:
+        classified = classify_creator(c)
+        if upsert_creator(classified):
+            new_stored += 1
+        if classified.get("business_email"):
+            with_email += 1
+
+    return {
+        "total_fetched": len(raw_creators),
+        "new_stored": new_stored,
+        "with_email": with_email,
+        "logs": [f"Scraped {len(raw_creators)} DIY creators ({new_stored} new, {with_email} with business email)"],
     }

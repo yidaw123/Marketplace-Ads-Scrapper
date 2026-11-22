@@ -966,16 +966,27 @@ function hideTrendTooltip() {
 }
 
 async function loadDashboard() {
-  const [sumRes, setRes] = await Promise.all([
+  const [sumRes, setRes, cSumRes] = await Promise.all([
     fetchJsonWithFallback("/api/summary", snap => computeStaticSummary(snap, "all", "all", "all")),
     fetchJsonWithFallback("/api/settings", snap => snap.settings || {}),
+    fetchJsonWithFallback("/api/creators/summary", snap => computeStaticCreatorsSummary(snap)),
   ]);
   summaryData = sumRes;
   currentSettings = setRes;
+  creatorsSummaryData = cSumRes;
+  const countPill = document.getElementById("tab-creators-count");
+  if (countPill && cSumRes && cSumRes.kpis) {
+    countPill.textContent = cSumRes.kpis.total_creators || 0;
+  }
 
   populateFilterDropdowns(sumRes);
   await refreshSummaryForGeo();
   await loadPosts();
+  if (activeMainTab === "creators") {
+    renderCreatorsKPIs(cSumRes.kpis || {});
+    renderCreatorsCategoryChart(cSumRes.category_breakdown || []);
+    await loadCreators();
+  }
 }
 
 function renderKPIs(kpis) {
@@ -1501,22 +1512,27 @@ function renderRegionPage() {
 }
 
 function populateFilterDropdowns(sumRes) {
-  const catSel = document.getElementById("filter-category");
-  const currentCat = catSel.value || "all";
   const cats = [...(sumRes.categories_list || [])].sort((a, b) => a.localeCompare(b));
-  catSel.innerHTML = `<option value="all">All Trade Categories</option>` +
-    cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
-  catSel.value = currentCat;
+  ["filter-category", "creator-category"].forEach(selId => {
+    const catSel = document.getElementById(selId);
+    if (!catSel) return;
+    const currentCat = catSel.value || "all";
+    catSel.innerHTML = `<option value="all">All Trade Categories</option>` +
+      cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+    catSel.value = currentCat;
+  });
 
   updateSubServiceOptions();
+  updateCreatorSubServiceOptions();
   updateProvinceAndCityOptions();
   if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
 }
 
-function updateSubServiceOptions() {
-  const subSel = document.getElementById("filter-sub-service");
-  if (!subSel) return;
-  const cat = document.getElementById("filter-category").value || "all";
+function _fillSubServiceSelect(catSelectId, subSelectId) {
+  const subSel = document.getElementById(subSelectId);
+  const catEl = document.getElementById(catSelectId);
+  if (!subSel || !catEl) return;
+  const cat = catEl.value || "all";
   const prevSub = subSel.value || "all";
   const subMap = (summaryData && summaryData.sub_services_map) ? summaryData.sub_services_map : {};
 
@@ -1536,7 +1552,15 @@ function updateSubServiceOptions() {
   subSel.innerHTML = `<option value="all">${esc(label)}</option>` +
     tasks.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join("");
   subSel.value = tasks.includes(prevSub) ? prevSub : "all";
-  if (typeof syncSearchableSelect === "function") syncSearchableSelect("filter-sub-service");
+  if (typeof syncSearchableSelect === "function") syncSearchableSelect(subSelectId);
+}
+
+function updateSubServiceOptions() {
+  _fillSubServiceSelect("filter-category", "filter-sub-service");
+}
+
+function updateCreatorSubServiceOptions() {
+  _fillSubServiceSelect("creator-category", "creator-sub-service");
 }
 
 function updateProvinceAndCityOptions() {
@@ -1865,43 +1889,66 @@ function renderPostsPage() {
   }).join("");
 
   if (pagBar) {
-    const pages = [];
-    const windowStart = Math.max(1, currentPage - 2);
-    const windowEnd = Math.min(totalPages, currentPage + 2);
-    if (windowStart > 1) pages.push(1);
-    if (windowStart > 2) pages.push("...");
-    for (let i = windowStart; i <= windowEnd; i++) pages.push(i);
-    if (windowEnd < totalPages - 1) pages.push("...");
-    if (windowEnd < totalPages) pages.push(totalPages);
-
-    const pageBtnsHtml = pages.map(pg =>
-      pg === "..."
-        ? `<span style="padding:0 4px;">...</span>`
-        : `<button class="page-btn ${pg === currentPage ? 'active' : ''}" onclick="goToPage(${pg})">${pg}</button>`
-    ).join("");
-
-    pagBar.innerHTML = `
-      <div>
-        Showing <strong>${startIdx + 1}-${endIdx}</strong> of <strong>${total}</strong>
-        &nbsp;·&nbsp;
-        Rows:
-        <select class="page-size-select" onchange="changePageSize(this.value)">
-          ${[10, 25, 50, 100].map(sz => `<option value="${sz}" ${sz === pageSize ? 'selected' : ''}>${sz}</option>`).join("")}
-        </select>
-      </div>
-      <div class="page-controls">
-        <button class="page-btn" onclick="goToPage(${currentPage - 1})" ${currentPage <= 1 ? "disabled" : ""}>Previous</button>
-        ${pageBtnsHtml}
-        <button class="page-btn" onclick="goToPage(${currentPage + 1})" ${currentPage >= totalPages ? "disabled" : ""}>Next</button>
-      </div>
-    `;
+    pagBar.innerHTML = _buildPaginationHtml(total, currentPage, pageSize, "goToPage", "changePageSize");
   }
+}
+
+function _buildPaginationHtml(total, page, sz, goFnName, sizeFnName) {
+  const totalPages = Math.max(1, Math.ceil(total / sz));
+  const startIdx = (page - 1) * sz;
+  const endIdx = Math.min(startIdx + sz, total);
+  const pages = [];
+  const windowStart = Math.max(1, page - 2);
+  const windowEnd = Math.min(totalPages, page + 2);
+  if (windowStart > 1) pages.push(1);
+  if (windowStart > 2) pages.push("...");
+  for (let i = windowStart; i <= windowEnd; i++) pages.push(i);
+  if (windowEnd < totalPages - 1) pages.push("...");
+  if (windowEnd < totalPages) pages.push(totalPages);
+
+  const pageBtnsHtml = pages.map(pg =>
+    pg === "..."
+      ? `<span style="padding:0 4px;">...</span>`
+      : `<button class="page-btn ${pg === page ? 'active' : ''}" onclick="${goFnName}(${pg})">${pg}</button>`
+  ).join("");
+
+  return `
+    <div>
+      Showing <strong>${startIdx + 1}-${endIdx}</strong> of <strong>${total}</strong>
+      &nbsp;·&nbsp;
+      Rows:
+      <select class="page-size-select" onchange="${sizeFnName}(this.value)">
+        ${[10, 25, 50, 100].map(opt => `<option value="${opt}" ${opt === sz ? 'selected' : ''}>${opt}</option>`).join("")}
+      </select>
+    </div>
+    <div class="page-controls">
+      <button class="page-btn" onclick="${goFnName}(${page - 1})" ${page <= 1 ? "disabled" : ""}>Previous</button>
+      ${pageBtnsHtml}
+      <button class="page-btn" onclick="${goFnName}(${page + 1})" ${page >= totalPages ? "disabled" : ""}>Next</button>
+    </div>
+  `;
 }
 
 function _csvCell(val) {
   let s = String(val ?? "");
   if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return `"${s.replace(/"/g, '""')}"`;
+}
+
+function _downloadCsv(filename, headers, rowArrays) {
+  const lines = [headers.map(_csvCell).join(",")];
+  rowArrays.forEach(row => lines.push(row.map(_csvCell).join(",")));
+  const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+    a.remove();
+  }, 150);
 }
 
 function handleExportCsv(evt) {
@@ -1918,29 +1965,16 @@ function handleExportCsv(evt) {
     "Price Value", "Price Type", "Name", "Phone Number", "Email", "Business Site",
     "Title", "Description", "URL", "Posted At", "Deleted At (Est.)",
   ];
-  const lines = [headers.map(_csvCell).join(",")];
-  rows.forEach(p => {
-    lines.push([
-      p.external_id, p.platform, p.source_detail, p.country, p.province,
-      p.city_region, p.neighborhood, p.intent_type, p.intent_score,
-      p.primary_category, p.sub_service, p.urgency, p.price_mention,
-      p.price_value, p.price_type,
-      p.contact_name || "", p.phone || "", p.email || "", p.website || "",
-      p.title, p.body, p.url, p.posted_at,
-      p.deleted_at || "",
-    ].map(_csvCell).join(","));
-  });
-  const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "handyman_market_research_leads.csv";
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    URL.revokeObjectURL(url);
-    a.remove();
-  }, 150);
+  const rowArrays = rows.map(p => [
+    p.external_id, p.platform, p.source_detail, p.country, p.province,
+    p.city_region, p.neighborhood, p.intent_type, p.intent_score,
+    p.primary_category, p.sub_service, p.urgency, p.price_mention,
+    p.price_value, p.price_type,
+    p.contact_name || "", p.phone || "", p.email || "", p.website || "",
+    p.title, p.body, p.url, p.posted_at,
+    p.deleted_at || "",
+  ]);
+  _downloadCsv("handyman_market_research_leads.csv", headers, rowArrays);
 }
 
 function classifyPostClientSide(post) {
@@ -2345,6 +2379,13 @@ const SEARCHABLE_SELECT_IDS = [
   "filter-urgency",
   "filter-date-preset",
   "filter-sort",
+  "creator-category",
+  "creator-sub-service",
+  "creator-platform",
+  "creator-tier",
+  "creator-contact",
+  "creator-country",
+  "creator-sort",
 ];
 
 function closeAllSearchableSelects(exceptWrap = null) {
@@ -2492,6 +2533,438 @@ function initSearchableSelects() {
     document.addEventListener("keydown", evt => {
       if (evt.key === "Escape") closeAllSearchableSelects();
     });
+  }
+}
+
+// ==================== Affiliate Creators Tab Logic ====================
+let activeMainTab = "listings";
+let creatorsLoadedOnce = false;
+let creatorsSummaryData = null;
+let allFilteredCreators = [];
+let creatorsCurrentPage = 1;
+let creatorsPageSize = 25;
+let creatorSearchDebounce = null;
+
+function debouncedLoadCreators() {
+  clearTimeout(creatorSearchDebounce);
+  creatorSearchDebounce = setTimeout(loadCreators, 250);
+}
+
+async function switchMainTab(tabName) {
+  activeMainTab = tabName === "creators" ? "creators" : "listings";
+  const listingsEl = document.getElementById("page-listings");
+  const creatorsEl = document.getElementById("page-creators");
+  const btnListings = document.getElementById("tab-btn-listings");
+  const btnCreators = document.getElementById("tab-btn-creators");
+
+  if (listingsEl) listingsEl.classList.toggle("hidden", activeMainTab !== "listings");
+  if (creatorsEl) creatorsEl.classList.toggle("hidden", activeMainTab !== "creators");
+  if (btnListings) btnListings.classList.toggle("active", activeMainTab === "listings");
+  if (btnCreators) btnCreators.classList.toggle("active", activeMainTab === "creators");
+
+  if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
+  if (activeMainTab === "creators" && !creatorsLoadedOnce) {
+    creatorsLoadedOnce = true;
+    await Promise.all([loadCreatorsSummary(), loadCreators()]);
+  }
+}
+
+function computeStaticCreatorsSummary(snap) {
+  const creators = snap.creators || [];
+  let withEmail = 0, onIg = 0, onTt = 0, onOther = 0, microMid = 0, northAm = 0;
+  const catMap = {};
+
+  creators.forEach(c => {
+    const hasEmail = Boolean((c.business_email || "").trim());
+    const hasIg = Boolean((c.instagram_url || "").trim());
+    const hasTt = Boolean((c.tiktok_url || "").trim());
+    const hasOther = Boolean((c.x_url || "").trim() || (c.facebook_url || "").trim() || (c.twitch_url || "").trim());
+    if (hasEmail) withEmail++;
+    if (hasIg) onIg++;
+    if (hasTt) onTt++;
+    if (hasOther) onOther++;
+    if (c.audience_tier === "micro" || c.audience_tier === "mid") microMid++;
+    if (c.country === "Canada" || c.country === "United States") northAm++;
+
+    const cat = c.primary_category || "General Handyman & Odd Jobs";
+    if (!catMap[cat]) {
+      catMap[cat] = { primary_category: cat, total_creators: 0, with_email: 0, on_instagram: 0, on_tiktok: 0 };
+    }
+    catMap[cat].total_creators++;
+    if (hasEmail) catMap[cat].with_email++;
+    if (hasIg) catMap[cat].on_instagram++;
+    if (hasTt) catMap[cat].on_tiktok++;
+  });
+
+  return {
+    kpis: {
+      total_creators: creators.length,
+      with_email: withEmail,
+      on_instagram: onIg,
+      on_tiktok: onTt,
+      on_x_fb_twitch: onOther,
+      micro_mid_tier: microMid,
+      north_america: northAm,
+    },
+    category_breakdown: Object.values(catMap).sort((a, b) => b.total_creators - a.total_creators || b.with_email - a.with_email),
+    categories_list: snap.categories_list || [],
+    sub_services_map: snap.sub_services_map || {},
+  };
+}
+
+async function loadCreatorsSummary() {
+  const res = await fetchJsonWithFallback("/api/creators/summary", snap => computeStaticCreatorsSummary(snap));
+  creatorsSummaryData = res;
+  const countPill = document.getElementById("tab-creators-count");
+  if (countPill && res && res.kpis) {
+    countPill.textContent = res.kpis.total_creators || 0;
+  }
+  renderCreatorsKPIs(res.kpis || {});
+  renderCreatorsCategoryChart(res.category_breakdown || []);
+}
+
+function renderCreatorsKPIs(kpis) {
+  const setVal = (id, v) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = v || 0;
+  };
+  setVal("ckpi-total", kpis.total_creators);
+  setVal("ckpi-email", kpis.with_email);
+  setVal("ckpi-ig", kpis.on_instagram);
+  setVal("ckpi-tt", kpis.on_tiktok);
+  setVal("ckpi-micro-mid", kpis.micro_mid_tier);
+}
+
+function syncActiveCreatorKpiCard(mode) {
+  ["all", "email", "instagram", "tiktok", "micro_mid"].forEach(k => {
+    const el = document.getElementById(`ckpi-card-${k}`);
+    if (el) el.classList.toggle("active", k === mode);
+  });
+}
+
+function quickFilterCreators(mode) {
+  syncActiveCreatorKpiCard(mode);
+  const platSel = document.getElementById("creator-platform");
+  const tierSel = document.getElementById("creator-tier");
+  const contactSel = document.getElementById("creator-contact");
+  if (platSel) platSel.value = "all";
+  if (tierSel) tierSel.value = "all";
+  if (contactSel) contactSel.value = "all";
+
+  if (mode === "email" && contactSel) contactSel.value = "has_email";
+  else if (mode === "instagram" && platSel) platSel.value = "instagram";
+  else if (mode === "tiktok" && platSel) platSel.value = "tiktok";
+  else if (mode === "micro_mid" && tierSel) tierSel.value = "micro_mid";
+
+  if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
+  loadCreators();
+}
+
+function renderCreatorsCategoryChart(cats) {
+  const container = document.getElementById("creators-category-chart");
+  if (!container) return;
+  if (!cats.length) {
+    container.innerHTML = `<p style="color:var(--muted);">No DIY creators scraped yet. Click <strong>Scrape DIY Creators</strong> above to collect public profiles &amp; business emails.</p>`;
+    return;
+  }
+  const maxVal = Math.max(1, ...cats.map(c => c.total_creators || 0));
+  container.innerHTML = cats.map(c => {
+    const emailPct = ((c.with_email || 0) / maxVal) * 100;
+    const otherPct = Math.max(0, (((c.total_creators || 0) - (c.with_email || 0)) / maxVal) * 100);
+    return `
+      <div class="bar-row" style="cursor:pointer" data-cat="${esc(c.primary_category)}" onclick="filterCreatorsByCategory(this.dataset.cat)">
+        <div class="bar-label">
+          <strong>${esc(c.primary_category)}</strong>
+          <span style="color:var(--muted)">
+            <span style="color:#34d399">${c.with_email || 0} With Email</span> ·
+            <span style="color:#f472b6">${c.on_instagram || 0} IG</span> ·
+            <span style="color:#2dd4bf">${c.on_tiktok || 0} TikTok</span> ·
+            <strong>${c.total_creators || 0} Total</strong>
+          </span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill-hiring" style="width:${emailPct}%"></div>
+          <div class="bar-fill-diy" style="width:${otherPct}%"></div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function filterCreatorsByCategory(cat) {
+  const catSel = document.getElementById("creator-category");
+  if (catSel) catSel.value = cat;
+  const subSel = document.getElementById("creator-sub-service");
+  if (subSel) subSel.value = "all";
+  updateCreatorSubServiceOptions();
+  if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
+  loadCreators();
+}
+
+function onCreatorCategoryChange() {
+  const subSel = document.getElementById("creator-sub-service");
+  if (subSel) subSel.value = "all";
+  updateCreatorSubServiceOptions();
+  loadCreators();
+}
+
+async function loadCreators() {
+  const category = document.getElementById("creator-category")?.value || "all";
+  const sub_service = document.getElementById("creator-sub-service")?.value || "all";
+  const social_platform = document.getElementById("creator-platform")?.value || "all";
+  const tier = document.getElementById("creator-tier")?.value || "all";
+  const contact_filter = document.getElementById("creator-contact")?.value || "all";
+  const country = document.getElementById("creator-country")?.value || "all";
+  const search = document.getElementById("creator-search")?.value || "";
+
+  const qs = new URLSearchParams({
+    category, sub_service, social_platform, tier, contact_filter, country, search,
+  }).toString();
+
+  const res = await fetchJsonWithFallback(`/api/creators?${qs}`, snap => {
+    const q = search.trim().toLowerCase();
+    const platColMap = {
+      instagram: "instagram_url", tiktok: "tiktok_url", youtube: "youtube_url",
+      facebook: "facebook_url", x: "x_url", twitch: "twitch_url", bluesky: "bluesky_url",
+    };
+    const filtered = (snap.creators || []).filter(c => {
+      if (category !== "all" && c.primary_category !== category) return false;
+      if (sub_service !== "all" && c.sub_service !== sub_service) return false;
+      if (social_platform !== "all") {
+        const col = platColMap[social_platform];
+        if (!col || !String(c[col] || "").trim()) return false;
+      }
+      if (tier === "micro_mid") {
+        if (c.audience_tier !== "micro" && c.audience_tier !== "mid") return false;
+      } else if (tier !== "all" && c.audience_tier !== tier) {
+        return false;
+      }
+      if (contact_filter === "has_email" && !String(c.business_email || "").trim()) return false;
+      if (contact_filter === "has_contact" && !String(c.business_email || "").trim() && !String(c.website || "").trim()) return false;
+      if (country === "Other") {
+        if (c.country === "Canada" || c.country === "United States") return false;
+      } else if (country !== "all" && c.country !== country) {
+        return false;
+      }
+      if (q) {
+        const hay = `${c.name || ""} ${c.handle || ""} ${c.bio || ""} ${c.business_email || ""} ${c.website || ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+    return { creators: filtered, count: filtered.length };
+  });
+
+  allFilteredCreators = res.creators || [];
+  applyCreatorsSortAndRender();
+}
+
+function applyCreatorsSortAndRender() {
+  const sortBy = document.getElementById("creator-sort")?.value || "email_first";
+  allFilteredCreators.sort((a, b) => {
+    if (sortBy === "audience_desc") {
+      return (b.audience_count || 0) - (a.audience_count || 0);
+    }
+    if (sortBy === "audience_asc") {
+      return (a.audience_count || 0) - (b.audience_count || 0);
+    }
+    if (sortBy === "name_asc") {
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    }
+    const ea = String(a.business_email || "").trim() ? 0 : 1;
+    const eb = String(b.business_email || "").trim() ? 0 : 1;
+    if (ea !== eb) return ea - eb;
+    return (b.audience_count || 0) - (a.audience_count || 0);
+  });
+  creatorsCurrentPage = 1;
+  renderCreatorsPage();
+}
+
+function goToCreatorsPage(page) {
+  const totalPages = Math.max(1, Math.ceil(allFilteredCreators.length / creatorsPageSize));
+  creatorsCurrentPage = Math.max(1, Math.min(totalPages, page));
+  renderCreatorsPage();
+  const tb = document.getElementById("creators-tbody");
+  if (tb) tb.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function changeCreatorsPageSize(newSize) {
+  creatorsPageSize = Number(newSize) || 25;
+  creatorsCurrentPage = 1;
+  renderCreatorsPage();
+}
+
+function copyCreatorEmail(email, btn) {
+  if (!email) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(email).catch(() => {});
+  }
+  if (btn) {
+    const prev = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(() => { btn.textContent = prev; }, 1200);
+  }
+}
+
+function renderCreatorsPage() {
+  const total = allFilteredCreators.length;
+  const totalPages = Math.max(1, Math.ceil(total / creatorsPageSize));
+  if (creatorsCurrentPage > totalPages) creatorsCurrentPage = totalPages;
+
+  const startIdx = (creatorsCurrentPage - 1) * creatorsPageSize;
+  const endIdx = Math.min(startIdx + creatorsPageSize, total);
+  const rows = allFilteredCreators.slice(startIdx, endIdx);
+
+  const countEl = document.getElementById("creators-results-count");
+  if (countEl) {
+    countEl.textContent = total > 0 ? `Showing ${startIdx + 1}-${endIdx} of ${total} matching creators` : "0 matching creators";
+  }
+
+  const tbody = document.getElementById("creators-tbody");
+  const pagBar = document.getElementById("creators-pagination-bar");
+  if (!tbody) return;
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:32px;">No creators match your current filters.</td></tr>`;
+    if (pagBar) pagBar.innerHTML = "";
+    return;
+  }
+
+  const socialLinkSpecs = [
+    ["youtube_url", "YouTube", "sp-yt"],
+    ["instagram_url", "Instagram", "sp-ig"],
+    ["tiktok_url", "TikTok", "sp-tt"],
+    ["facebook_url", "Facebook", "sp-fb"],
+    ["x_url", "X", "sp-x"],
+    ["twitch_url", "Twitch", "sp-tw"],
+    ["bluesky_url", "Bluesky", "sp-bsky"],
+  ];
+
+  tbody.innerHTML = rows.map(c => {
+    const tier = String(c.audience_tier || "micro").toLowerCase();
+    const tierCls = tier === "macro" ? "tier-macro" : tier === "mid" ? "tier-mid" : tier === "nano" ? "tier-nano" : "tier-micro";
+    const tierLabel = tier === "macro" ? "Macro (500K+)" : tier === "mid" ? "Mid-Tier" : tier === "nano" ? "Nano" : "Micro";
+    const audLabel = c.audience_text || (c.audience_count ? `${Number(c.audience_count).toLocaleString()} followers` : "Creator");
+
+    const socialHtml = socialLinkSpecs
+      .filter(([field]) => String(c[field] || "").trim())
+      .map(([field, label, cls]) => `<a class="social-pill ${cls}" href="${esc(safeUrl(c[field]))}" target="_blank" rel="noopener noreferrer">${label}</a>`)
+      .join("");
+
+    const emailStr = String(c.business_email || "").trim();
+    const firstEmail = emailStr ? emailStr.split(",")[0].trim() : "";
+    const siteStr = String(c.website || "").trim();
+    const emailBlock = emailStr
+      ? `<div class="email-copy-row">
+           <a href="mailto:${esc(firstEmail)}" style="color:#34d399;font-size:0.8rem;font-weight:600;word-break:break-all;text-decoration:none;">${esc(emailStr)}</a>
+           <button type="button" class="email-copy-btn" data-email="${esc(firstEmail)}" onclick="copyCreatorEmail(this.dataset.email, this)">Copy</button>
+         </div>`
+      : `<span style="color:var(--muted);font-size:0.78rem;">No direct email listed</span>`;
+    const siteBlock = siteStr
+      ? `<div style="margin-top:5px;"><a href="${esc(safeUrl(siteStr))}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa;font-size:0.77rem;word-break:break-all;">${esc(siteStr)}</a></div>`
+      : "";
+
+    return `
+      <tr>
+        <td>
+          <a class="post-title" href="${esc(safeUrl(c.profile_url))}" target="_blank" rel="noopener noreferrer">${esc(c.name)}</a>
+          <span style="font-size:0.76rem;color:var(--muted);margin-left:6px;">${esc(c.handle || "")}${c.country ? ` · ${esc(c.country)}` : ""}</span>
+          ${c.bio ? `<div class="post-body">${esc(c.bio)}</div>` : ""}
+        </td>
+        <td>
+          <div><span class="badge b-cat">${esc(c.primary_category)}</span></div>
+          ${c.sub_service ? `<div><span class="badge b-subtask">${esc(c.sub_service)}</span></div>` : ""}
+        </td>
+        <td>
+          <span class="badge ${tierCls}">${tierLabel}</span>
+          <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:5px;font-weight:600;">${esc(audLabel)}</div>
+        </td>
+        <td>
+          <div class="social-pills">${socialHtml || `<span style="color:var(--muted);font-size:0.78rem;">—</span>`}</div>
+        </td>
+        <td>
+          ${emailBlock}
+          ${siteBlock}
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  if (pagBar) {
+    pagBar.innerHTML = _buildPaginationHtml(total, creatorsCurrentPage, creatorsPageSize, "goToCreatorsPage", "changeCreatorsPageSize");
+  }
+}
+
+async function resetCreatorFilters() {
+  ["creator-category", "creator-sub-service", "creator-platform", "creator-tier", "creator-contact", "creator-country"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "all";
+  });
+  const sEl = document.getElementById("creator-search");
+  if (sEl) sEl.value = "";
+  const sortEl = document.getElementById("creator-sort");
+  if (sortEl) sortEl.value = "email_first";
+  syncActiveCreatorKpiCard("all");
+  updateCreatorSubServiceOptions();
+  if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
+  await loadCreators();
+}
+
+function handleExportCreatorsCsv(evt) {
+  if (evt) evt.preventDefault();
+  const rows = allFilteredCreators || [];
+  if (!rows.length) {
+    alert("No matching creators to export with your current filters.");
+    return;
+  }
+  const headers = [
+    "Creator ID", "Name", "Handle", "Primary Platform", "Country",
+    "Audience Count", "Audience Tier", "Trade Category", "Task Category",
+    "Business Email", "Website / Link Hub", "YouTube URL", "Instagram URL",
+    "TikTok URL", "Facebook URL", "X / Twitter URL", "Twitch URL", "Bluesky URL", "Bio",
+  ];
+  const rowArrays = rows.map(c => [
+    c.creator_id, c.name, c.handle, c.primary_platform, c.country,
+    c.audience_count, c.audience_tier, c.primary_category, c.sub_service,
+    c.business_email || "", c.website || "", c.youtube_url || "", c.instagram_url || "",
+    c.tiktok_url || "", c.facebook_url || "", c.x_url || "", c.twitch_url || "", c.bluesky_url || "",
+    c.bio || "",
+  ]);
+  _downloadCsv("diy_affiliate_creators.csv", headers, rowArrays);
+}
+
+async function triggerCreatorsScrape() {
+  const btn = document.getElementById("scrape-creators-btn");
+  if (!btn) return;
+  btn.disabled = true;
+  let elapsedSec = 0;
+  btn.textContent = "Scraping Creators... (0s)";
+  const timer = setInterval(() => {
+    elapsedSec += 1;
+    btn.textContent = `Scraping Creators... (${elapsedSec}s)`;
+  }, 1000);
+
+  try {
+    const apiBase = isStaticHost() ? "http://127.0.0.1:8765" : "";
+    if (!(await isBackendReachable(apiBase))) {
+      alert("Creator scraping requires the local Python server running on http://127.0.0.1:8765 (or an automated cloud snapshot update). Showing archived creators.");
+      return;
+    }
+    const resp = await fetchWithTimeout(`${apiBase}/api/scrape-creators`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ max_new_profiles: 85 }),
+    }, 240000);
+    const res = await resp.json();
+    if (!resp.ok) throw new Error(res.error || `HTTP ${resp.status}`);
+    await Promise.all([loadCreatorsSummary(), loadCreators()]);
+    alert(`Creator scrape complete! Processed ${res.total_fetched} DIY creators (${res.new_stored} newly added, ${res.with_email} with business emails).`);
+  } catch (e) {
+    alert("Error scraping creators: " + e.message);
+  } finally {
+    clearInterval(timer);
+    btn.disabled = false;
+    btn.textContent = "Scrape DIY Creators";
   }
 }
 

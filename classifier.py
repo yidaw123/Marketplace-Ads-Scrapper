@@ -558,6 +558,40 @@ def _kw_in(kw: str, text: str) -> bool:
     return bool(_KEYWORD_REGEX[kw].search(text))
 
 
+def _score_trade_categories(
+    title_text: str,
+    combined_lower: str,
+    default_cat: Any = None,
+) -> Tuple[str, List[str], List[Tuple[str, int]]]:
+    """Score title & body text across the 10 Trade Categories and return (primary, secondary, raw_scores)."""
+    cat_scores: List[Tuple[str, int]] = []
+    for cat_name, cat_info in SERVICE_CATEGORIES.items():
+        score = 0
+        for kw, weight in cat_info["keywords"]:
+            if _kw_in(kw, title_text):
+                score += weight * 2
+            elif _kw_in(kw, combined_lower):
+                score += weight
+        if score > 0:
+            cat_scores.append((cat_name, score))
+
+    cat_scores.sort(key=lambda x: x[1], reverse=True)
+    specific_scores = [(c, s) for c, s in cat_scores if c != "General Handyman & Odd Jobs" and s >= 3]
+    if specific_scores:
+        primary = specific_scores[0][0]
+        secondary = [c[0] for c in cat_scores if c[0] != primary and c[1] >= 4][:2]
+    elif default_cat in SERVICE_CATEGORIES:
+        primary = default_cat
+        secondary = [c[0] for c in cat_scores if c[0] != primary and c[1] >= 4][:2]
+    elif cat_scores:
+        primary = cat_scores[0][0]
+        secondary = [c[0] for c in cat_scores[1:3] if c[1] >= 4]
+    else:
+        primary = "General Handyman & Odd Jobs"
+        secondary = []
+    return primary, secondary, cat_scores
+
+
 def classify_post_rules(post: Dict[str, Any]) -> Dict[str, Any]:
     title = (post.get("title") or "").strip()
     body = (post.get("body") or "").strip()
@@ -566,32 +600,9 @@ def classify_post_rules(post: Dict[str, Any]) -> Dict[str, Any]:
     combined = f"{title} {body}".lower()
 
     # 1. Category scoring
-    cat_scores: List[Tuple[str, int]] = []
-    for cat_name, cat_info in SERVICE_CATEGORIES.items():
-        score = 0
-        for kw, weight in cat_info["keywords"]:
-            if _kw_in(kw, title):
-                score += weight * 2
-            elif _kw_in(kw, combined):
-                score += weight
-        if score > 0:
-            cat_scores.append((cat_name, score))
-
-    cat_scores.sort(key=lambda x: x[1], reverse=True)
-    specific_scores = [(c, s) for c, s in cat_scores if c != "General Handyman & Odd Jobs" and s >= 3]
-    default_cat = post.get("default_category")
-    if specific_scores:
-        primary_category = specific_scores[0][0]
-        secondary_categories = [c[0] for c in cat_scores if c[0] != primary_category and c[1] >= 4][:2]
-    elif default_cat in SERVICE_CATEGORIES:
-        primary_category = default_cat
-        secondary_categories = [c[0] for c in cat_scores if c[0] != primary_category and c[1] >= 4][:2]
-    elif cat_scores:
-        primary_category = cat_scores[0][0]
-        secondary_categories = [c[0] for c in cat_scores[1:3] if c[1] >= 4]
-    else:
-        primary_category = "General Handyman & Odd Jobs"
-        secondary_categories = []
+    primary_category, secondary_categories, cat_scores = _score_trade_categories(
+        title, combined, post.get("default_category")
+    )
 
     # 2. Intent classification
     def _hits(patterns: List[str]) -> int:
@@ -869,3 +880,43 @@ def enrich_posts_with_llm(
                 break  # bad key / model name — don't hammer the API with every batch
 
     return posts
+
+
+def compute_audience_tier(count: int) -> str:
+    """Bucket a creator's follower/subscriber count into standard affiliate outreach tiers."""
+    if count >= 500000:
+        return "macro"
+    if count >= 100000:
+        return "mid"
+    if count >= 10000:
+        return "micro"
+    return "nano"
+
+
+def classify_creator(creator: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Classify a DIY / home-improvement influencer into the same 10 Trade Categories
+    and Task Categories used across the dashboard, and assign an audience tier.
+    """
+    name = (creator.get("name") or "").strip()
+    bio = (creator.get("bio") or "").strip()
+    seed_topic = (creator.get("seed_topic") or "").strip()
+    combined = f"{name} {bio} {seed_topic}".lower()
+
+    primary_category, secondary_categories, _ = _score_trade_categories(
+        f"{name} {seed_topic}",
+        combined,
+        creator.get("default_category"),
+    )
+    sub_service = detect_sub_service(primary_category, f"{name} {seed_topic}", combined)
+    audience_count = int(creator.get("audience_count") or 0)
+    audience_tier = compute_audience_tier(audience_count)
+
+    return {
+        **creator,
+        "primary_category": primary_category,
+        "sub_service": sub_service,
+        "secondary_categories": secondary_categories,
+        "audience_count": audience_count,
+        "audience_tier": audience_tier,
+    }
