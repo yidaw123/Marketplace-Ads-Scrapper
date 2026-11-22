@@ -489,87 +489,14 @@ def _scrape_bluesky_diy_creators(existing_ids: Optional[set] = None) -> List[Dic
     return results
 
 
-def _scrape_twitch_diy_creators(existing_ids: Optional[set] = None) -> List[Dict[str, Any]]:
-    """Query Twitch public Makers & Crafting category for English woodworking / DIY repair creators."""
-    results: List[Dict[str, Any]] = []
-    try:
-        gql_req = urllib.request.Request(
-            "https://gql.twitch.tv/gql",
-            data=json.dumps(
-                {
-                    "query": """query { game(name: "Makers & Crafting") { streams(first: 25) { edges { node { title broadcaster { login displayName description } } } } } }"""
-                }
-            ).encode("utf-8"),
-            headers={
-                "Client-ID": "kimne78kx3ncx6brgo4mv6wki5h1ko",
-                "Content-Type": "application/json",
-                "User-Agent": USER_AGENT,
-            },
-        )
-        with urllib.request.urlopen(gql_req, timeout=8) as r:
-            data = json.loads(r.read().decode("utf-8"))
-        edges = (((data.get("data") or {}).get("game") or {}).get("streams") or {}).get("edges") or []
-    except Exception:
-        return results
-
-    for edge in edges:
-        node = (edge or {}).get("node") or {}
-        b = node.get("broadcaster") or {}
-        login = (b.get("login") or "").strip()
-        name = (b.get("displayName") or login).strip()
-        desc = (b.get("description") or "").strip()
-        stream_title = (node.get("title") or "").strip()
-        if not login or _is_excluded_creator(name, login):
-            continue
-        cid = f"twitch_{login.lower()}"
-        if existing_ids and cid in existing_ids:
-            continue
-        combined = f"{stream_title} {desc}"
-        if not re.search(
-            r"\b(woodwork\w*|carpentr\w*|diy|handyman|home repair|renovat\w*|plumb\w*|electric\w*|weld\w*|metalwork|workshop|cabinet\w*|furniture)\b",
-            combined,
-            re.IGNORECASE,
-        ):
-            continue
-        emails = _extract_clean_emails(desc)
-        raw_urls = re.findall(r"https?://[^\s)<\]\"']+", desc, re.IGNORECASE)
-        socials = _classify_creator_links(raw_urls)
-        tw_url = f"https://www.twitch.tv/{login}"
-        results.append(
-            {
-                "creator_id": cid,
-                "name": name,
-                "handle": f"@{login}",
-                "primary_platform": "twitch",
-                "profile_url": tw_url,
-                "country": "",
-                "audience_count": 0,
-                "audience_text": "Twitch Maker Channel",
-                "default_category": "Carpentry, Doors & Windows",
-                "seed_topic": "twitch makers workshop woodworking",
-                "bio": re.sub(r"\s+", " ", f"{desc or stream_title}")[:600],
-                "business_email": ", ".join(emails[:2]),
-                "website": socials["website"] or (socials["link_hubs"][0] if socials["link_hubs"] else ""),
-                "youtube_url": "",
-                "instagram_url": socials["instagram_url"],
-                "tiktok_url": socials["tiktok_url"],
-                "facebook_url": socials["facebook_url"],
-                "x_url": socials["x_url"],
-                "twitch_url": tw_url,
-                "bluesky_url": socials["bluesky_url"],
-            }
-        )
-    return results
-
-
 def scrape_diy_creators(
     existing_ids: Optional[set] = None,
     max_new_profiles: int = 85,
 ) -> List[Dict[str, Any]]:
     """
-    Discovers DIY / Home-Improvement creators across YouTube, Bluesky, and Twitch,
-    follows Linktree/bio links to extract business outreach emails and cross-platform
-    social handles (Instagram, TikTok, Facebook, X/Twitter, Twitch, YouTube),
+    Discovers DIY / Home-Improvement creators across YouTube and Bluesky,
+    follows Linktree/bio links and websites to extract business outreach emails and
+    cross-platform social handles (Instagram, TikTok, Facebook, X/Twitter, Twitch, YouTube),
     and returns normalized creator records.
     """
     seed_by_nav: Dict[str, Dict[str, str]] = {}
@@ -617,13 +544,9 @@ def scrape_diy_creators(
                 except Exception:
                     pass
 
-    with ThreadPoolExecutor(max_workers=2) as extra_exec:
-        bsky_fut = extra_exec.submit(_scrape_bluesky_diy_creators, existing_ids)
-        tw_fut = extra_exec.submit(_scrape_twitch_diy_creators, existing_ids)
-        for fut in (bsky_fut, tw_fut):
-            try:
-                creators.extend(fut.result())
-            except Exception:
-                pass
+    try:
+        creators.extend(_scrape_bluesky_diy_creators(existing_ids))
+    except Exception:
+        pass
 
     return creators
