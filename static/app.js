@@ -2384,6 +2384,7 @@ const SEARCHABLE_SELECT_IDS = [
   "creator-platform",
   "creator-tier",
   "creator-contact",
+  "creator-contacted",
   "creator-country",
   "creator-province",
   "creator-city",
@@ -2571,9 +2572,32 @@ async function switchMainTab(tabName) {
   }
 }
 
+const CREATOR_CONTACTED_STORAGE_KEY = "diy_creators_contacted_v1";
+
+function _getStaticContactedMap() {
+  try {
+    return JSON.parse(localStorage.getItem(CREATOR_CONTACTED_STORAGE_KEY) || "{}");
+  } catch (_) {
+    return {};
+  }
+}
+
+function _isCreatorContacted(c) {
+  if (!c) return false;
+  if (isStaticHost()) {
+    const m = _getStaticContactedMap();
+    if (Object.prototype.hasOwnProperty.call(m, c.creator_id)) {
+      return Boolean(m[c.creator_id] && m[c.creator_id].contacted);
+    }
+  }
+  return Boolean(c.contacted);
+}
+
 function computeStaticCreatorsSummary(snap) {
   const creators = snap.creators || [];
-  let withEmail = 0, onYt = 0, onIg = 0, onTt = 0, onFb = 0, onX = 0, onBsky = 0;
+  let withEmail = 0, contactedCount = 0;
+  let onYt = 0, onIg = 0, onTt = 0, onFb = 0, onX = 0, onBsky = 0;
+  let onPin = 0, onThr = 0, onLi = 0, onRed = 0, onAmz = 0;
   let microMid = 0, northAm = 0;
   const tierCounts = { nano: 0, micro: 0, mid: 0, macro: 0, mega: 0 };
   const provByCountry = { "United States": new Set(), "Canada": new Set() };
@@ -2591,14 +2615,25 @@ function computeStaticCreatorsSummary(snap) {
     const hasFb = Boolean((c.facebook_url || "").trim());
     const hasX = Boolean((c.x_url || "").trim());
     const hasBsky = Boolean((c.bluesky_url || "").trim());
+    const hasPin = Boolean((c.pinterest_url || "").trim());
+    const hasThr = Boolean((c.threads_url || "").trim());
+    const hasLi = Boolean((c.linkedin_url || "").trim());
+    const hasRed = Boolean((c.reddit_url || "").trim());
+    const hasAmz = Boolean((c.amazon_store_url || "").trim());
 
     if (hasEmail) withEmail++;
+    if (_isCreatorContacted(c)) contactedCount++;
     if (hasYt) onYt++;
     if (hasIg) onIg++;
     if (hasTt) onTt++;
     if (hasFb) onFb++;
     if (hasX) onX++;
     if (hasBsky) onBsky++;
+    if (hasPin) onPin++;
+    if (hasThr) onThr++;
+    if (hasLi) onLi++;
+    if (hasRed) onRed++;
+    if (hasAmz) onAmz++;
     if (c.audience_tier === "micro" || c.audience_tier === "mid") microMid++;
     if (Object.prototype.hasOwnProperty.call(tierCounts, c.audience_tier)) {
       tierCounts[c.audience_tier]++;
@@ -2642,12 +2677,18 @@ function computeStaticCreatorsSummary(snap) {
     kpis: {
       total_creators: creators.length,
       with_email: withEmail,
+      contacted_count: contactedCount,
       on_youtube: onYt,
       on_instagram: onIg,
       on_tiktok: onTt,
       on_facebook: onFb,
       on_x: onX,
       on_bluesky: onBsky,
+      on_pinterest: onPin,
+      on_threads: onThr,
+      on_linkedin: onLi,
+      on_reddit: onRed,
+      on_amazon: onAmz,
       micro_mid_tier: microMid,
       north_america: northAm,
     },
@@ -2691,6 +2732,7 @@ function renderCreatorsKPIs(kpis, tierCounts = {}) {
   };
   setVal("ckpi-total", kpis.total_creators);
   setVal("ckpi-email", kpis.with_email);
+  setVal("ckpi-contacted", kpis.contacted_count);
   setVal("ckpi-na", kpis.north_america);
   setVal("ckpi-micro-mid", kpis.micro_mid_tier);
 
@@ -2699,7 +2741,12 @@ function renderCreatorsKPIs(kpis, tierCounts = {}) {
   setVal("splat-count-instagram", kpis.on_instagram);
   setVal("splat-count-tiktok", kpis.on_tiktok);
   setVal("splat-count-facebook", kpis.on_facebook);
+  setVal("splat-count-pinterest", kpis.on_pinterest);
+  setVal("splat-count-threads", kpis.on_threads);
   setVal("splat-count-x", kpis.on_x);
+  setVal("splat-count-linkedin", kpis.on_linkedin);
+  setVal("splat-count-reddit", kpis.on_reddit);
+  setVal("splat-count-amazon", kpis.on_amazon);
   setVal("splat-count-bluesky", kpis.on_bluesky);
 
   setVal("stier-count-all", kpis.total_creators);
@@ -2711,7 +2758,7 @@ function renderCreatorsKPIs(kpis, tierCounts = {}) {
 }
 
 function syncActiveCreatorKpiCard(mode) {
-  ["all", "email", "north_america", "micro_mid"].forEach(k => {
+  ["all", "email", "contacted", "north_america", "micro_mid"].forEach(k => {
     const el = document.getElementById(`ckpi-card-${k}`);
     if (el) el.classList.toggle("active", k === mode);
   });
@@ -2828,17 +2875,20 @@ function quickFilterCreators(mode) {
   const platSel = document.getElementById("creator-platform");
   const tierSel = document.getElementById("creator-tier");
   const contactSel = document.getElementById("creator-contact");
+  const contactedSel = document.getElementById("creator-contacted");
   const countrySel = document.getElementById("creator-country");
   const provSel = document.getElementById("creator-province");
   const citySel = document.getElementById("creator-city");
   if (platSel) platSel.value = "all";
   if (tierSel) tierSel.value = "all";
   if (contactSel) contactSel.value = "all";
+  if (contactedSel) contactedSel.value = "all";
   if (countrySel) countrySel.value = "all";
   if (provSel) provSel.value = "all";
   if (citySel) citySel.value = "all";
 
   if (mode === "email" && contactSel) contactSel.value = "has_email";
+  else if (mode === "contacted" && contactedSel) contactedSel.value = "contacted";
   else if (mode === "north_america" && countrySel) countrySel.value = "North America";
   else if (mode === "micro_mid" && tierSel) tierSel.value = "micro_mid";
 
@@ -2902,13 +2952,14 @@ async function loadCreators() {
   const social_platform = document.getElementById("creator-platform")?.value || "all";
   const tier = document.getElementById("creator-tier")?.value || "all";
   const contact_filter = document.getElementById("creator-contact")?.value || "all";
+  const contacted_filter = document.getElementById("creator-contacted")?.value || "all";
   const country = document.getElementById("creator-country")?.value || "all";
   const province_state = document.getElementById("creator-province")?.value || "all";
   const city = document.getElementById("creator-city")?.value || "all";
   const search = document.getElementById("creator-search")?.value || "";
 
   const qs = new URLSearchParams({
-    category, sub_service, social_platform, tier, contact_filter, country, province_state, city, search,
+    category, sub_service, social_platform, tier, contact_filter, contacted_filter, country, province_state, city, search,
   }).toString();
 
   const res = await fetchJsonWithFallback(`/api/creators?${qs}`, snap => {
@@ -2916,6 +2967,8 @@ async function loadCreators() {
     const platColMap = {
       instagram: "instagram_url", tiktok: "tiktok_url", youtube: "youtube_url",
       facebook: "facebook_url", x: "x_url", bluesky: "bluesky_url",
+      pinterest: "pinterest_url", threads: "threads_url", linkedin: "linkedin_url",
+      reddit: "reddit_url", amazon: "amazon_store_url",
     };
     const filtered = (snap.creators || []).filter(c => {
       if (category !== "all" && c.primary_category !== category) return false;
@@ -2931,6 +2984,8 @@ async function loadCreators() {
       }
       if (contact_filter === "has_email" && !String(c.business_email || "").trim()) return false;
       if (contact_filter === "has_contact" && !String(c.business_email || "").trim() && !String(c.website || "").trim()) return false;
+      if (contacted_filter === "contacted" && !_isCreatorContacted(c)) return false;
+      if (contacted_filter === "not_contacted" && _isCreatorContacted(c)) return false;
       if (country === "Other") {
         if (c.country === "Canada" || c.country === "United States") return false;
       } else if (country === "North America") {
@@ -3038,7 +3093,12 @@ function renderCreatorsPage() {
     ["instagram_url", "Instagram", "sp-ig"],
     ["tiktok_url", "TikTok", "sp-tt"],
     ["facebook_url", "Facebook", "sp-fb"],
+    ["pinterest_url", "Pinterest", "sp-pin"],
+    ["threads_url", "Threads", "sp-thr"],
     ["x_url", "X", "sp-x"],
+    ["linkedin_url", "LinkedIn", "sp-li"],
+    ["reddit_url", "Reddit", "sp-red"],
+    ["amazon_store_url", "Amazon Shop", "sp-amz"],
     ["bluesky_url", "Bluesky", "sp-bsky"],
   ];
 
@@ -3048,6 +3108,7 @@ function renderCreatorsPage() {
     const tierLabel = tier === "mega" ? "Mega (1M+)" : tier === "macro" ? "Macro (500K–1M)" : tier === "mid" ? "Mid-Tier" : tier === "nano" ? "Nano" : "Micro";
     const audLabel = c.audience_text || (c.audience_count ? `${Number(c.audience_count).toLocaleString()} followers` : "Creator");
     const locLabel = formatCreatorLocationText(c);
+    const isContacted = _isCreatorContacted(c);
 
     const socialHtml = socialLinkSpecs
       .filter(([field]) => String(c[field] || "").trim())
@@ -3067,6 +3128,12 @@ function renderCreatorsPage() {
            <span style="color:var(--muted);font-size:0.78rem;">No direct email listed</span>
            <button type="button" class="email-copy-btn" data-creator-id="${esc(c.creator_id)}" onclick="openEmailDraftForCreator(this.dataset.creatorId)">Draft Outreach</button>
          </div>`;
+    const contactedBlock = `
+      <div style="margin-top:6px;">
+        <button type="button" class="contacted-toggle-btn${isContacted ? " is-contacted" : ""}" data-creator-id="${esc(c.creator_id)}" onclick="toggleCreatorContacted(this.dataset.creatorId)">
+          ${isContacted ? "&#10003; Contacted" : "&#9675; Mark Contacted"}
+        </button>
+      </div>`;
     const siteBlock = siteStr
       ? `<div style="margin-top:5px;"><a href="${esc(safeUrl(siteStr))}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa;font-size:0.77rem;word-break:break-all;">${esc(siteStr)}</a></div>`
       : "";
@@ -3092,6 +3159,7 @@ function renderCreatorsPage() {
         <td>
           ${emailBlock}
           ${siteBlock}
+          ${contactedBlock}
         </td>
       </tr>
     `;
@@ -3102,8 +3170,59 @@ function renderCreatorsPage() {
   }
 }
 
+async function toggleCreatorContacted(creatorId, forceState = null) {
+  const row = (allFilteredCreators || []).find(c => String(c.creator_id) === String(creatorId));
+  const current = row ? _isCreatorContacted(row) : false;
+  const nextState = forceState === null ? !current : Boolean(forceState);
+  const nowIso = nextState ? new Date().toISOString() : "";
+
+  if (row) {
+    row.contacted = nextState ? 1 : 0;
+    row.contacted_at = nowIso;
+  }
+  const map = _getStaticContactedMap();
+  map[creatorId] = { contacted: nextState, contacted_at: nowIso };
+  try {
+    localStorage.setItem(CREATOR_CONTACTED_STORAGE_KEY, JSON.stringify(map));
+  } catch (_) {}
+
+  renderCreatorsPage();
+
+  if (!isStaticHost()) {
+    try {
+      await fetch("/api/creators/contacted", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ creator_id: creatorId, contacted: nextState }),
+      });
+    } catch (_) {}
+  }
+
+  if (creatorsSummaryData && creatorsSummaryData.kpis) {
+    if (isStaticHost() && staticSnapshot && staticSnapshot.creators) {
+      const snapRow = staticSnapshot.creators.find(c => String(c.creator_id) === String(creatorId));
+      if (snapRow) {
+        snapRow.contacted = nextState ? 1 : 0;
+        snapRow.contacted_at = nowIso;
+      }
+      const nextSum = computeStaticCreatorsSummary(staticSnapshot);
+      creatorsSummaryData = nextSum;
+      renderCreatorsKPIs(nextSum.kpis, nextSum.tier_counts);
+    } else if (!isStaticHost()) {
+      loadCreatorsSummary();
+    }
+  }
+}
+
+function onMailtoDraftClick() {
+  const autoBox = document.getElementById("draft-auto-contacted");
+  if (activeDraftCreator && (!autoBox || autoBox.checked)) {
+    toggleCreatorContacted(activeDraftCreator.creator_id, true);
+  }
+}
+
 async function resetCreatorFilters() {
-  ["creator-category", "creator-sub-service", "creator-platform", "creator-tier", "creator-contact", "creator-country", "creator-province", "creator-city"].forEach(id => {
+  ["creator-category", "creator-sub-service", "creator-platform", "creator-tier", "creator-contact", "creator-contacted", "creator-country", "creator-province", "creator-city"].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = "all";
   });
@@ -3129,19 +3248,24 @@ function handleExportCreatorsCsv(evt) {
   const headers = [
     "Creator ID", "Name", "Handle", "Primary Platform", "City", "Province / State", "Country",
     "Audience Count", "Audience Tier", "Trade Category", "Task Category",
-    "Business Email", "Website / Link Hub", "YouTube URL", "Instagram URL",
-    "TikTok URL", "Facebook URL", "X / Twitter URL", "Bluesky URL", "Bio",
+    "Business Email", "Contacted", "Contacted At", "Website / Link Hub", "YouTube URL", "Instagram URL",
+    "TikTok URL", "Facebook URL", "X / Twitter URL", "Bluesky URL",
+    "Pinterest URL", "Threads URL", "LinkedIn URL", "Reddit URL", "Amazon Storefront URL", "Bio",
   ];
   const rowArrays = rows.map(c => {
     const isUsOrCa = c.country === "United States" || c.country === "Canada";
+    const isContacted = _isCreatorContacted(c);
     return [
       c.creator_id, c.name, c.handle, c.primary_platform,
       isUsOrCa ? (c.city || "") : "",
       isUsOrCa ? (c.province_state || "") : "",
       c.country || "",
       c.audience_count, c.audience_tier, c.primary_category, c.sub_service,
-      c.business_email || "", c.website || "", c.youtube_url || "", c.instagram_url || "",
+      c.business_email || "", isContacted ? "Yes" : "No", c.contacted_at || "",
+      c.website || "", c.youtube_url || "", c.instagram_url || "",
       c.tiktok_url || "", c.facebook_url || "", c.x_url || "", c.bluesky_url || "",
+      c.pinterest_url || "", c.threads_url || "", c.linkedin_url || "",
+      c.reddit_url || "", c.amazon_store_url || "",
       c.bio || "",
     ];
   });

@@ -11,7 +11,12 @@ from classifier import (
     extract_contact_info,
     extract_creator_location,
 )
-from scrapers.creators_scraper import _extract_clean_emails
+from scrapers.creators_scraper import (
+    _classify_creator_links,
+    _decode_cfemail,
+    _extract_clean_emails,
+    _parse_html_page_signals,
+)
 
 
 def classify(title, body="", platform="reddit", source="r/bayarea"):
@@ -216,6 +221,10 @@ class CreatorClassificationTests(unittest.TestCase):
             extract_creator_location("Pro", "Based in Milwaukee, WI", "United States"),
             ("Milwaukee", "Wisconsin", "United States"),
         )
+        self.assertEqual(
+            extract_creator_location("Fix This House", "PO BOX 123 BREMERTON, WA 98310", "United States"),
+            ("Bremerton", "Washington", "United States"),
+        )
 
     def test_creator_classified_into_trade_and_task_buckets(self):
         c = classify_creator(
@@ -234,6 +243,60 @@ class CreatorClassificationTests(unittest.TestCase):
     def test_clean_email_rejects_retina_images_and_keeps_business_email(self):
         sample = "Logo Badge@2x.png support@linktr.ee noreply@site.com Collabs: hello@diycreator.com"
         self.assertEqual(_extract_clean_emails(sample), ["hello@diycreator.com"])
+
+    def test_email_strict_accuracy_and_obfuscation(self):
+        noisy = (
+            "support@milwaukeetool.com help@squarespace.com privacy@example.com "
+            "user@domain.com admin@wix.com a1b2c3d4e5f6071890ab@random.io "
+            "Sponsors & business inquiries: matt@thefixerhomerepair.com "
+            "Also reach alex [at] buildcraft [dot] ca"
+        )
+        emails = _extract_clean_emails(
+            noisy,
+            allowed_site_domain="thefixerhomerepair.com",
+            require_context_for_third_party=True,
+        )
+        self.assertIn("matt@thefixerhomerepair.com", emails)
+        self.assertIn("alex@buildcraft.ca", emails)
+        self.assertNotIn("support@milwaukeetool.com", emails)
+        self.assertNotIn("user@domain.com", emails)
+
+        # Third-party domain without outreach context or near false context is rejected
+        site_copy = "Theme designed by studio@themeagency.io. Music by artist@beatmaker.fm."
+        self.assertEqual(
+            _extract_clean_emails(site_copy, allowed_site_domain="myhandyman.com", require_context_for_third_party=True),
+            [],
+        )
+
+        # Cloudflare data-cfemail decoding (e.g. hello@diy.ca -> key 0x2a)
+        plain = "hello@diy.ca"
+        key = 0x2A
+        encoded = f"{key:02x}" + "".join(f"{ord(c) ^ key:02x}" for c in plain)
+        self.assertEqual(_decode_cfemail(encoded), plain)
+        html_snippet = f'<html><body><p>Contact us: <span data-cfemail="{encoded}">[email]</span></p></body></html>'
+        found_emails, _, _, _ = _parse_html_page_signals(html_snippet, page_url="https://diy.ca/contact", allowed_site_domain="diy.ca")
+        self.assertIn(plain, found_emails)
+
+    def test_new_platform_links_extracted_accurately(self):
+        links = _classify_creator_links(
+            [
+                "https://www.pinterest.com/pin/123456789/",
+                "https://www.pinterest.com/modernbuilds/",
+                "https://www.threads.net/@modernbuilds",
+                "https://www.linkedin.com/in/michael-montgomery-diy/",
+                "https://www.reddit.com/u/modernbuilds",
+                "https://www.amazon.com/shop/modernbuilds",
+                "https://modernbuilds.com",
+            ]
+        )
+        self.assertEqual(links["pinterest_url"], "https://www.pinterest.com/modernbuilds")
+        self.assertEqual(links["threads_url"], "https://www.threads.net/@modernbuilds")
+        self.assertEqual(links["linkedin_url"], "https://www.linkedin.com/in/michael-montgomery-diy")
+        self.assertEqual(links["reddit_url"], "https://www.reddit.com/u/modernbuilds")
+        self.assertEqual(links["amazon_store_url"], "https://www.amazon.com/shop/modernbuilds")
+        self.assertEqual(links["website"], "https://modernbuilds.com")
+        self.assertEqual(_classify_creator_links(["https://gopjn.com/t/1234", "https://hvacdirect.com"])["website"], "")
+        self.assertEqual(_extract_clean_emails("info@hvacdirect.com"), [])
 
 
 if __name__ == "__main__":

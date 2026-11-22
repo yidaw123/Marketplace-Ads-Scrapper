@@ -352,6 +352,13 @@ def init_db() -> None:
             x_url TEXT DEFAULT '',
             twitch_url TEXT DEFAULT '',
             bluesky_url TEXT DEFAULT '',
+            pinterest_url TEXT DEFAULT '',
+            threads_url TEXT DEFAULT '',
+            linkedin_url TEXT DEFAULT '',
+            reddit_url TEXT DEFAULT '',
+            amazon_store_url TEXT DEFAULT '',
+            contacted INTEGER DEFAULT 0,
+            contacted_at TEXT DEFAULT '',
             scraped_at TEXT NOT NULL
         )
         """
@@ -381,9 +388,14 @@ def init_db() -> None:
 
     cur.execute("PRAGMA table_info(creators)")
     existing_creator_cols = {row["name"] for row in cur.fetchall()}
-    for col_name in ("province_state", "city"):
+    for col_name in (
+        "province_state", "city", "pinterest_url", "threads_url",
+        "linkedin_url", "reddit_url", "amazon_store_url", "contacted_at",
+    ):
         if col_name not in existing_creator_cols:
             cur.execute(f"ALTER TABLE creators ADD COLUMN {col_name} TEXT DEFAULT ''")
+    if "contacted" not in existing_creator_cols:
+        cur.execute("ALTER TABLE creators ADD COLUMN contacted INTEGER DEFAULT 0")
 
     # Seed or upgrade regions setting so new Canadian provinces/cities are always present
     cur.execute("SELECT value FROM settings WHERE key = 'regions'")
@@ -1338,7 +1350,7 @@ def upsert_creator(creator: Dict[str, Any]) -> bool:
                 handle = ?,
                 primary_platform = ?,
                 profile_url = ?,
-                country = ?,
+                country = COALESCE(NULLIF(?, ''), country),
                 province_state = ?,
                 city = ?,
                 audience_count = ?,
@@ -1347,16 +1359,21 @@ def upsert_creator(creator: Dict[str, Any]) -> bool:
                 primary_category = ?,
                 sub_service = ?,
                 secondary_categories = ?,
-                bio = ?,
-                business_email = ?,
-                website = ?,
-                youtube_url = ?,
-                instagram_url = ?,
-                tiktok_url = ?,
-                facebook_url = ?,
-                x_url = ?,
-                twitch_url = ?,
-                bluesky_url = ?,
+                bio = COALESCE(NULLIF(?, ''), bio),
+                business_email = COALESCE(NULLIF(?, ''), business_email),
+                website = COALESCE(NULLIF(?, ''), website),
+                youtube_url = COALESCE(NULLIF(?, ''), youtube_url),
+                instagram_url = COALESCE(NULLIF(?, ''), instagram_url),
+                tiktok_url = COALESCE(NULLIF(?, ''), tiktok_url),
+                facebook_url = COALESCE(NULLIF(?, ''), facebook_url),
+                x_url = COALESCE(NULLIF(?, ''), x_url),
+                twitch_url = COALESCE(NULLIF(?, ''), twitch_url),
+                bluesky_url = COALESCE(NULLIF(?, ''), bluesky_url),
+                pinterest_url = COALESCE(NULLIF(?, ''), pinterest_url),
+                threads_url = COALESCE(NULLIF(?, ''), threads_url),
+                linkedin_url = COALESCE(NULLIF(?, ''), linkedin_url),
+                reddit_url = COALESCE(NULLIF(?, ''), reddit_url),
+                amazon_store_url = COALESCE(NULLIF(?, ''), amazon_store_url),
                 scraped_at = ?
             WHERE creator_id = ?
             """,
@@ -1384,6 +1401,11 @@ def upsert_creator(creator: Dict[str, Any]) -> bool:
                 creator.get("x_url", ""),
                 creator.get("twitch_url", ""),
                 creator.get("bluesky_url", ""),
+                creator.get("pinterest_url", ""),
+                creator.get("threads_url", ""),
+                creator.get("linkedin_url", ""),
+                creator.get("reddit_url", ""),
+                creator.get("amazon_store_url", ""),
                 now_iso,
                 creator["creator_id"],
             ),
@@ -1399,8 +1421,9 @@ def upsert_creator(creator: Dict[str, Any]) -> bool:
             audience_count, audience_text, audience_tier, primary_category, sub_service,
             secondary_categories, bio, business_email, website,
             youtube_url, instagram_url, tiktok_url, facebook_url, x_url, twitch_url, bluesky_url,
-            scraped_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            pinterest_url, threads_url, linkedin_url, reddit_url, amazon_store_url,
+            contacted, contacted_at, scraped_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             creator["creator_id"],
@@ -1427,6 +1450,13 @@ def upsert_creator(creator: Dict[str, Any]) -> bool:
             creator.get("x_url", ""),
             creator.get("twitch_url", ""),
             creator.get("bluesky_url", ""),
+            creator.get("pinterest_url", ""),
+            creator.get("threads_url", ""),
+            creator.get("linkedin_url", ""),
+            creator.get("reddit_url", ""),
+            creator.get("amazon_store_url", ""),
+            1 if creator.get("contacted") else 0,
+            creator.get("contacted_at", ""),
             now_iso,
         ),
     )
@@ -1435,19 +1465,40 @@ def upsert_creator(creator: Dict[str, Any]) -> bool:
     return True
 
 
+def set_creator_contacted(creator_id: str, contacted: bool) -> Dict[str, Any]:
+    """Mark or unmark a DIY affiliate creator as Contacted for outreach tracking."""
+    now_iso = datetime.now(timezone.utc).isoformat() if contacted else ""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE creators SET contacted = ?, contacted_at = ? WHERE creator_id = ?",
+        (1 if contacted else 0, now_iso, creator_id),
+    )
+    updated = cur.rowcount
+    conn.commit()
+    conn.close()
+    return {
+        "creator_id": creator_id,
+        "contacted": bool(contacted),
+        "contacted_at": now_iso,
+        "updated": updated > 0,
+    }
+
+
 def query_creators(
     category: Optional[str] = None,
     sub_service: Optional[str] = None,
     social_platform: Optional[str] = None,
     tier: Optional[str] = None,
     contact_filter: Optional[str] = None,
+    contacted_filter: Optional[str] = None,
     country: Optional[str] = None,
     province_state: Optional[str] = None,
     city: Optional[str] = None,
     search: Optional[str] = None,
     limit: int = 1000,
 ) -> List[Dict[str, Any]]:
-    """Query DIY affiliate creators filtered by trade/task category, social presence, tier, geo, and contact availability."""
+    """Query DIY affiliate creators filtered by trade/task category, social presence, tier, contacted state, geo, and contact availability."""
     conn = get_connection()
     cur = conn.cursor()
 
@@ -1469,6 +1520,11 @@ def query_creators(
         "facebook": "facebook_url",
         "x": "x_url",
         "bluesky": "bluesky_url",
+        "pinterest": "pinterest_url",
+        "threads": "threads_url",
+        "linkedin": "linkedin_url",
+        "reddit": "reddit_url",
+        "amazon": "amazon_store_url",
     }
     if social_platform and social_platform in plat_col_map:
         col = plat_col_map[social_platform]
@@ -1485,6 +1541,11 @@ def query_creators(
         clauses.append("COALESCE(business_email, '') != ''")
     elif contact_filter == "has_contact":
         clauses.append("(COALESCE(business_email, '') != '' OR COALESCE(website, '') != '')")
+
+    if contacted_filter == "contacted":
+        clauses.append("COALESCE(contacted, 0) = 1")
+    elif contacted_filter == "not_contacted":
+        clauses.append("COALESCE(contacted, 0) = 0")
 
     if country and country != "all":
         if country == "Other":
@@ -1542,12 +1603,18 @@ def get_creators_summary() -> Dict[str, Any]:
         SELECT
             COUNT(*) as total_creators,
             SUM(CASE WHEN COALESCE(business_email, '') != '' THEN 1 ELSE 0 END) as with_email,
+            SUM(CASE WHEN COALESCE(contacted, 0) = 1 THEN 1 ELSE 0 END) as contacted_count,
             SUM(CASE WHEN COALESCE(youtube_url, '') != '' THEN 1 ELSE 0 END) as on_youtube,
             SUM(CASE WHEN COALESCE(instagram_url, '') != '' THEN 1 ELSE 0 END) as on_instagram,
             SUM(CASE WHEN COALESCE(tiktok_url, '') != '' THEN 1 ELSE 0 END) as on_tiktok,
             SUM(CASE WHEN COALESCE(facebook_url, '') != '' THEN 1 ELSE 0 END) as on_facebook,
             SUM(CASE WHEN COALESCE(x_url, '') != '' THEN 1 ELSE 0 END) as on_x,
             SUM(CASE WHEN COALESCE(bluesky_url, '') != '' THEN 1 ELSE 0 END) as on_bluesky,
+            SUM(CASE WHEN COALESCE(pinterest_url, '') != '' THEN 1 ELSE 0 END) as on_pinterest,
+            SUM(CASE WHEN COALESCE(threads_url, '') != '' THEN 1 ELSE 0 END) as on_threads,
+            SUM(CASE WHEN COALESCE(linkedin_url, '') != '' THEN 1 ELSE 0 END) as on_linkedin,
+            SUM(CASE WHEN COALESCE(reddit_url, '') != '' THEN 1 ELSE 0 END) as on_reddit,
+            SUM(CASE WHEN COALESCE(amazon_store_url, '') != '' THEN 1 ELSE 0 END) as on_amazon,
             SUM(CASE WHEN audience_tier IN ('micro', 'mid') THEN 1 ELSE 0 END) as micro_mid_tier,
             SUM(CASE WHEN country IN ('Canada', 'United States') THEN 1 ELSE 0 END) as north_america,
             SUM(CASE WHEN audience_tier = 'nano' THEN 1 ELSE 0 END) as tier_nano,
@@ -1562,12 +1629,18 @@ def get_creators_summary() -> Dict[str, Any]:
     kpis = {
         "total_creators": (kpi_row["total_creators"] or 0) if kpi_row else 0,
         "with_email": (kpi_row["with_email"] or 0) if kpi_row else 0,
+        "contacted_count": (kpi_row["contacted_count"] or 0) if kpi_row else 0,
         "on_youtube": (kpi_row["on_youtube"] or 0) if kpi_row else 0,
         "on_instagram": (kpi_row["on_instagram"] or 0) if kpi_row else 0,
         "on_tiktok": (kpi_row["on_tiktok"] or 0) if kpi_row else 0,
         "on_facebook": (kpi_row["on_facebook"] or 0) if kpi_row else 0,
         "on_x": (kpi_row["on_x"] or 0) if kpi_row else 0,
         "on_bluesky": (kpi_row["on_bluesky"] or 0) if kpi_row else 0,
+        "on_pinterest": (kpi_row["on_pinterest"] or 0) if kpi_row else 0,
+        "on_threads": (kpi_row["on_threads"] or 0) if kpi_row else 0,
+        "on_linkedin": (kpi_row["on_linkedin"] or 0) if kpi_row else 0,
+        "on_reddit": (kpi_row["on_reddit"] or 0) if kpi_row else 0,
+        "on_amazon": (kpi_row["on_amazon"] or 0) if kpi_row else 0,
         "micro_mid_tier": (kpi_row["micro_mid_tier"] or 0) if kpi_row else 0,
         "north_america": (kpi_row["north_america"] or 0) if kpi_row else 0,
     }

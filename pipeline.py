@@ -217,9 +217,11 @@ def run_scrape_pipeline(
 
 def run_creators_scrape_pipeline(max_new_profiles: int = 85) -> Dict[str, Any]:
     """
-    Discovers DIY & home-improvement creators across YouTube, Bluesky, Twitch, Linktree,
-    and creator websites, classifies them into Trade & Task Categories, and stores
-    affiliate outreach contact info in SQLite.
+    Discovers DIY & home-improvement creators across YouTube and Bluesky, deep-crawls
+    Linktree/bio hubs, recent video descriptions, and website contact/about/partnership
+    pages to extract verified business emails and cross-platform links (Instagram,
+    TikTok, Facebook, X/Twitter, Pinterest, Threads, LinkedIn, Reddit, Amazon Shop),
+    then stores results in SQLite.
     """
     known_creator_ids = get_all_creator_ids()
     raw_creators = scrape_diy_creators(

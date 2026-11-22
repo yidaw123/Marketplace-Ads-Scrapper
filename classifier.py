@@ -1077,7 +1077,7 @@ def _scan_text_for_us_ca_geo(text: str, allowed_country: str) -> tuple[str, str,
             continue
         prov, ctry = _resolve_region(code, allowed_country)
         if prov:
-            return city_cand, prov, ctry
+            return (city_cand.title() if city_cand.isupper() else city_cand), prov, ctry
 
     for m in _CITY_FULL_RE.finditer(text):
         city_cand, state_full = m.group(1).strip(), m.group(2).strip()
@@ -1085,7 +1085,7 @@ def _scan_text_for_us_ca_geo(text: str, allowed_country: str) -> tuple[str, str,
             continue
         prov, ctry = _resolve_region(state_full, allowed_country)
         if prov:
-            return city_cand, prov, ctry
+            return (city_cand.title() if city_cand.isupper() else city_cand), prov, ctry
 
     for m in _MAJOR_CITY_RE.finditer(text):
         city_name = m.group(1)

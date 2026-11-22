@@ -12,6 +12,7 @@ from database import (
     init_db,
     query_posts,
     query_creators,
+    set_creator_contacted,
     get_analytics_summary,
     get_creators_summary,
     get_demand_trends,
@@ -308,6 +309,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 social_platform=qs.get("social_platform", ["all"])[0],
                 tier=qs.get("tier", ["all"])[0],
                 contact_filter=qs.get("contact_filter", ["all"])[0],
+                contacted_filter=qs.get("contacted_filter", ["all"])[0],
                 country=qs.get("country", ["all"])[0],
                 province_state=qs.get("province_state", ["all"])[0],
                 city=qs.get("city", ["all"])[0],
@@ -324,6 +326,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 social_platform=qs.get("social_platform", ["all"])[0],
                 tier=qs.get("tier", ["all"])[0],
                 contact_filter=qs.get("contact_filter", ["all"])[0],
+                contacted_filter=qs.get("contacted_filter", ["all"])[0],
                 country=qs.get("country", ["all"])[0],
                 province_state=qs.get("province_state", ["all"])[0],
                 city=qs.get("city", ["all"])[0],
@@ -337,9 +340,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "Creator ID", "Name", "Handle", "Primary Platform",
                     "City", "Province / State", "Country",
                     "Audience Count", "Audience Tier", "Trade Category", "Task Category",
-                    "Business Email", "Website / Link Hub", "YouTube URL", "Instagram URL",
+                    "Business Email", "Contacted", "Contacted At",
+                    "Website / Link Hub", "YouTube URL", "Instagram URL",
                     "TikTok URL", "Facebook URL", "X / Twitter URL", "Bluesky URL",
-                    "Bio",
+                    "Pinterest URL", "Threads URL", "LinkedIn URL", "Reddit URL",
+                    "Amazon Storefront URL", "Bio",
                 ]
             )
             for c in creators:
@@ -357,6 +362,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         c.get("primary_category"),
                         c.get("sub_service"),
                         c.get("business_email"),
+                        "Yes" if c.get("contacted") else "No",
+                        c.get("contacted_at") or "",
                         c.get("website"),
                         c.get("youtube_url"),
                         c.get("instagram_url"),
@@ -364,6 +371,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         c.get("facebook_url"),
                         c.get("x_url"),
                         c.get("bluesky_url"),
+                        c.get("pinterest_url"),
+                        c.get("threads_url"),
+                        c.get("linkedin_url"),
+                        c.get("reddit_url"),
+                        c.get("amazon_store_url"),
                         c.get("bio"),
                     ]]
                 )
@@ -527,6 +539,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_json(result)
             return
 
+        if path == "/api/creators/contacted":
+            cid = str(body.get("creator_id") or "").strip()
+            if not cid:
+                self._send_json({"error": "creator_id is required"}, 400)
+                return
+            contacted = bool(body.get("contacted", True))
+            res = set_creator_contacted(cid, contacted)
+            if not res.get("updated"):
+                self._send_json({"error": "Creator not found"}, 404)
+                return
+            export_static_snapshot()
+            self._send_json(res)
+            return
+
         if path == "/api/settings":
             if "regions" in body and isinstance(body["regions"], list):
                 set_setting("regions", body["regions"])
@@ -604,13 +630,25 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Handyman Startup Market Research Scraper & Dashboard")
     parser.add_argument("--port", type=int, default=8765, help="Port to run the web dashboard on")
-    parser.add_argument("--scrape-only", action="store_true", help="Run a live scrape and exit without starting the web server")
+    parser.add_argument("--scrape-only", action="store_true", help="Run live scrapes (Market Listings then Affiliate Creators) and exit")
+    parser.add_argument("--no-creators", action="store_true", help="Skip the sequential Affiliate Creators scrape during --scrape-only")
+    parser.add_argument("--creators-only", action="store_true", help="Run only the Affiliate Creators scrape and exit")
     args = parser.parse_args()
 
     init_db()
-    if args.scrape_only:
-        res = run_scrape_pipeline()
+    if args.creators_only:
+        creators_res = run_creators_scrape_pipeline(max_new_profiles=60)
         export_static_snapshot()
-        print(json.dumps(res, indent=2))
+        print(json.dumps({"creators": creators_res}, indent=2))
+    elif args.scrape_only:
+        market_res = run_scrape_pipeline()
+        creators_res: Dict[str, Any] = {}
+        if not args.no_creators:
+            try:
+                creators_res = run_creators_scrape_pipeline(max_new_profiles=60)
+            except Exception as exc:
+                creators_res = {"error": str(exc)}
+        export_static_snapshot()
+        print(json.dumps({"market_listings": market_res, "affiliate_creators": creators_res}, indent=2))
     else:
         run_server(port=args.port)

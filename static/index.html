@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Handyman Market Research & Lead Explorer</title>
-  <link rel="stylesheet" href="./static/styles.css?v=24" />
+  <link rel="stylesheet" href="./static/styles.css?v=25" />
 </head>
 <body>
   <div class="container">
@@ -374,7 +374,7 @@
           <div>
             <h2 style="font-size:1.08rem;font-weight:700;color:#fff;margin-bottom:4px;">DIY &amp; Home Improvement Affiliate Creators</h2>
             <p style="font-size:0.82rem;color:var(--muted);">
-              Discover public DIY influencers across YouTube, Linktree &amp; Websites, and Bluesky — extracting business emails and Instagram, TikTok, Facebook &amp; X links grouped into Trade &amp; Task Categories.
+              Discover public DIY influencers across YouTube, Linktree &amp; Websites, and Bluesky — extracting verified business emails and Instagram, TikTok, Facebook, X, Pinterest, Threads, LinkedIn, Reddit &amp; Amazon Shop links grouped into Trade &amp; Task Categories.
             </p>
           </div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;">
@@ -401,6 +401,11 @@
           <div class="kpi-val" id="ckpi-email" style="color:#34d399">0</div>
           <div class="kpi-sub">Direct affiliate outreach</div>
         </div>
+        <div class="kpi-card" id="ckpi-card-contacted" onclick="quickFilterCreators('contacted')">
+          <div class="kpi-label">Contacted</div>
+          <div class="kpi-val" id="ckpi-contacted" style="color:#38bdf8">0</div>
+          <div class="kpi-sub">Outreach tracked</div>
+        </div>
         <div class="kpi-card" id="ckpi-card-north_america" onclick="quickFilterCreators('north_america')">
           <div class="kpi-label">US &amp; Canada</div>
           <div class="kpi-val" id="ckpi-na" style="color:#a78bfa">0</div>
@@ -417,7 +422,7 @@
       <div class="quick-strip-card">
         <div class="quick-strip-header">
           <span class="quick-strip-title">Social Platforms</span>
-          <span style="font-size:0.74rem;color:var(--muted);">Filter creators by any linked social channel</span>
+          <span style="font-size:0.74rem;color:var(--muted);">Filter creators by any linked social channel or storefront</span>
         </div>
         <div class="quick-pill-strip" id="creator-platform-strip">
           <button type="button" class="quick-pill active" data-plat="all" onclick="setCreatorPlatformQuick('all')">
@@ -435,8 +440,23 @@
           <button type="button" class="quick-pill" data-plat="facebook" onclick="setCreatorPlatformQuick('facebook')">
             Facebook <span class="quick-pill-count" id="splat-count-facebook">0</span>
           </button>
+          <button type="button" class="quick-pill" data-plat="pinterest" onclick="setCreatorPlatformQuick('pinterest')">
+            Pinterest <span class="quick-pill-count" id="splat-count-pinterest">0</span>
+          </button>
+          <button type="button" class="quick-pill" data-plat="threads" onclick="setCreatorPlatformQuick('threads')">
+            Threads <span class="quick-pill-count" id="splat-count-threads">0</span>
+          </button>
           <button type="button" class="quick-pill" data-plat="x" onclick="setCreatorPlatformQuick('x')">
             X / Twitter <span class="quick-pill-count" id="splat-count-x">0</span>
+          </button>
+          <button type="button" class="quick-pill" data-plat="linkedin" onclick="setCreatorPlatformQuick('linkedin')">
+            LinkedIn <span class="quick-pill-count" id="splat-count-linkedin">0</span>
+          </button>
+          <button type="button" class="quick-pill" data-plat="reddit" onclick="setCreatorPlatformQuick('reddit')">
+            Reddit <span class="quick-pill-count" id="splat-count-reddit">0</span>
+          </button>
+          <button type="button" class="quick-pill" data-plat="amazon" onclick="setCreatorPlatformQuick('amazon')">
+            Amazon Shop <span class="quick-pill-count" id="splat-count-amazon">0</span>
           </button>
           <button type="button" class="quick-pill" data-plat="bluesky" onclick="setCreatorPlatformQuick('bluesky')">
             Bluesky <span class="quick-pill-count" id="splat-count-bluesky">0</span>
@@ -508,11 +528,16 @@
             <label for="creator-platform">Social Platform</label>
             <select id="creator-platform" onchange="onCreatorPlatformSelectChange()">
               <option value="all">Any Platform</option>
+              <option value="youtube">YouTube</option>
               <option value="instagram">Instagram</option>
               <option value="tiktok">TikTok</option>
-              <option value="youtube">YouTube</option>
               <option value="facebook">Facebook</option>
+              <option value="pinterest">Pinterest</option>
+              <option value="threads">Threads</option>
               <option value="x">X / Twitter</option>
+              <option value="linkedin">LinkedIn</option>
+              <option value="reddit">Reddit</option>
+              <option value="amazon">Amazon Shop</option>
               <option value="bluesky">Bluesky</option>
             </select>
           </div>
@@ -529,13 +554,21 @@
             </select>
           </div>
         </div>
-        <div class="filter-grid-secondary">
+        <div class="filter-grid-secondary" style="grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));">
           <div class="field">
             <label for="creator-contact">Contact Info</label>
             <select id="creator-contact" onchange="loadCreators()">
               <option value="all">All Creators</option>
               <option value="has_email">Has Business Email</option>
               <option value="has_contact">Has Email or Website</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="creator-contacted">Outreach Status</label>
+            <select id="creator-contacted" onchange="loadCreators()">
+              <option value="all">All Statuses</option>
+              <option value="not_contacted">Not Contacted Yet</option>
+              <option value="contacted">Contacted</option>
             </select>
           </div>
           <div class="field">
@@ -569,7 +602,7 @@
               <option value="name_asc">Name (A to Z)</option>
             </select>
           </div>
-          <div>
+          <div style="align-self:end;">
             <button class="secondary" onclick="resetCreatorFilters()">Reset Filters</button>
           </div>
         </div>
@@ -692,7 +725,12 @@
         <pre class="email-preview-body" id="draft-preview-body"></pre>
       </div>
 
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:16px;flex-wrap:wrap;">
+      <label style="display:inline-flex;align-items:center;gap:8px;font-size:0.79rem;color:var(--text-secondary);margin-top:12px;cursor:pointer;">
+        <input type="checkbox" id="draft-auto-contacted" checked style="width:auto;" />
+        Automatically mark creator as <strong>Contacted</strong> when clicking Open in Mail App
+      </label>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:14px;flex-wrap:wrap;">
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button type="button" class="secondary" onclick="resetEmailTemplate()">Reset Default</button>
           <button type="button" class="secondary" id="tpl-save-btn" onclick="saveEmailTemplate()">Save Template Default</button>
@@ -700,12 +738,12 @@
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button type="button" class="secondary" id="draft-copy-btn" onclick="copyRenderedDraft(false)">Copy Body</button>
           <button type="button" id="draft-copy-all-btn" onclick="copyRenderedDraft(true)">Copy Subject + Body</button>
-          <a id="draft-mailto-link" href="#" class="badge b-cat" style="display:inline-flex;align-items:center;padding:8px 13px;font-size:0.82rem;font-weight:600;text-decoration:none;border-radius:7px;" target="_blank" rel="noopener noreferrer">Open in Mail App</a>
+          <a id="draft-mailto-link" href="#" onclick="onMailtoDraftClick()" class="badge b-cat" style="display:inline-flex;align-items:center;padding:8px 13px;font-size:0.82rem;font-weight:600;text-decoration:none;border-radius:7px;" target="_blank" rel="noopener noreferrer">Open in Mail App</a>
         </div>
       </div>
     </div>
   </div>
 
-  <script src="./static/app.js?v=33"></script>
+  <script src="./static/app.js?v=34"></script>
 </body>
 </html>
