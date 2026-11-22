@@ -309,6 +309,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 tier=qs.get("tier", ["all"])[0],
                 contact_filter=qs.get("contact_filter", ["all"])[0],
                 country=qs.get("country", ["all"])[0],
+                province_state=qs.get("province_state", ["all"])[0],
+                city=qs.get("city", ["all"])[0],
                 search=qs.get("search", [""])[0],
                 limit=_qs_int(qs, "limit", 1000, 1, 2000),
             )
@@ -323,6 +325,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 tier=qs.get("tier", ["all"])[0],
                 contact_filter=qs.get("contact_filter", ["all"])[0],
                 country=qs.get("country", ["all"])[0],
+                province_state=qs.get("province_state", ["all"])[0],
+                city=qs.get("city", ["all"])[0],
                 search=qs.get("search", [""])[0],
                 limit=2000,
             )
@@ -330,7 +334,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             writer = csv.writer(output)
             writer.writerow(
                 [
-                    "Creator ID", "Name", "Handle", "Primary Platform", "Country",
+                    "Creator ID", "Name", "Handle", "Primary Platform",
+                    "City", "Province / State", "Country",
                     "Audience Count", "Audience Tier", "Trade Category", "Task Category",
                     "Business Email", "Website / Link Hub", "YouTube URL", "Instagram URL",
                     "TikTok URL", "Facebook URL", "X / Twitter URL", "Twitch URL", "Bluesky URL",
@@ -344,6 +349,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         c.get("name"),
                         c.get("handle"),
                         c.get("primary_platform"),
+                        c.get("city"),
+                        c.get("province_state"),
                         c.get("country"),
                         c.get("audience_count"),
                         c.get("audience_tier"),

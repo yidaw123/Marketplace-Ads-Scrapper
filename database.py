@@ -334,6 +334,8 @@ def init_db() -> None:
             primary_platform TEXT NOT NULL,
             profile_url TEXT NOT NULL,
             country TEXT DEFAULT '',
+            province_state TEXT DEFAULT '',
+            city TEXT DEFAULT '',
             audience_count INTEGER DEFAULT 0,
             audience_text TEXT DEFAULT '',
             audience_tier TEXT DEFAULT 'micro',
@@ -376,6 +378,12 @@ def init_db() -> None:
     for col_name in ("contact_name", "phone", "email", "website"):
         if col_name not in existing_cols:
             cur.execute(f"ALTER TABLE posts ADD COLUMN {col_name} TEXT DEFAULT ''")
+
+    cur.execute("PRAGMA table_info(creators)")
+    existing_creator_cols = {row["name"] for row in cur.fetchall()}
+    for col_name in ("province_state", "city"):
+        if col_name not in existing_creator_cols:
+            cur.execute(f"ALTER TABLE creators ADD COLUMN {col_name} TEXT DEFAULT ''")
 
     # Seed or upgrade regions setting so new Canadian provinces/cities are always present
     cur.execute("SELECT value FROM settings WHERE key = 'regions'")
@@ -1318,6 +1326,10 @@ def upsert_creator(creator: Dict[str, Any]) -> bool:
         else str(creator.get("secondary_categories", "[]"))
     )
 
+    country_val = (creator.get("country") or "").strip()
+    prov_val = (creator.get("province_state") or "").strip() if country_val in ("United States", "Canada") else ""
+    city_val = (creator.get("city") or "").strip() if country_val in ("United States", "Canada") else ""
+
     if existing:
         cur.execute(
             """
@@ -1327,6 +1339,8 @@ def upsert_creator(creator: Dict[str, Any]) -> bool:
                 primary_platform = ?,
                 profile_url = ?,
                 country = ?,
+                province_state = ?,
+                city = ?,
                 audience_count = ?,
                 audience_text = ?,
                 audience_tier = ?,
@@ -1351,7 +1365,9 @@ def upsert_creator(creator: Dict[str, Any]) -> bool:
                 creator.get("handle", ""),
                 creator.get("primary_platform", "youtube"),
                 creator.get("profile_url", ""),
-                creator.get("country", ""),
+                country_val,
+                prov_val,
+                city_val,
                 int(creator.get("audience_count") or 0),
                 creator.get("audience_text", ""),
                 creator.get("audience_tier", "micro"),
@@ -1379,12 +1395,12 @@ def upsert_creator(creator: Dict[str, Any]) -> bool:
     cur.execute(
         """
         INSERT INTO creators (
-            creator_id, name, handle, primary_platform, profile_url, country,
+            creator_id, name, handle, primary_platform, profile_url, country, province_state, city,
             audience_count, audience_text, audience_tier, primary_category, sub_service,
             secondary_categories, bio, business_email, website,
             youtube_url, instagram_url, tiktok_url, facebook_url, x_url, twitch_url, bluesky_url,
             scraped_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             creator["creator_id"],
@@ -1392,7 +1408,9 @@ def upsert_creator(creator: Dict[str, Any]) -> bool:
             creator.get("handle", ""),
             creator.get("primary_platform", "youtube"),
             creator.get("profile_url", ""),
-            creator.get("country", ""),
+            country_val,
+            prov_val,
+            city_val,
             int(creator.get("audience_count") or 0),
             creator.get("audience_text", ""),
             creator.get("audience_tier", "micro"),
@@ -1424,10 +1442,12 @@ def query_creators(
     tier: Optional[str] = None,
     contact_filter: Optional[str] = None,
     country: Optional[str] = None,
+    province_state: Optional[str] = None,
+    city: Optional[str] = None,
     search: Optional[str] = None,
     limit: int = 1000,
 ) -> List[Dict[str, Any]]:
-    """Query DIY affiliate creators filtered by trade/task category, social presence, tier, and contact availability."""
+    """Query DIY affiliate creators filtered by trade/task category, social presence, tier, geo, and contact availability."""
     conn = get_connection()
     cur = conn.cursor()
 
@@ -1470,16 +1490,27 @@ def query_creators(
     if country and country != "all":
         if country == "Other":
             clauses.append("COALESCE(country, '') NOT IN ('Canada', 'United States')")
+        elif country == "North America":
+            clauses.append("country IN ('Canada', 'United States')")
         else:
             clauses.append("country = ?")
             params.append(country)
 
+    if province_state and province_state != "all":
+        clauses.append("province_state = ?")
+        params.append(province_state)
+
+    if city and city != "all":
+        clauses.append("city = ?")
+        params.append(city)
+
     if search and search.strip():
         q = f"%{search.strip()}%"
         clauses.append(
-            "(name LIKE ? OR handle LIKE ? OR bio LIKE ? OR business_email LIKE ? OR website LIKE ?)"
+            "(name LIKE ? OR handle LIKE ? OR bio LIKE ? OR business_email LIKE ? OR website LIKE ? "
+            "OR country LIKE ? OR province_state LIKE ? OR city LIKE ?)"
         )
-        params.extend([q, q, q, q, q])
+        params.extend([q, q, q, q, q, q, q, q])
 
     where_sql = " AND ".join(clauses)
     sql = f"""
@@ -1503,7 +1534,7 @@ def query_creators(
 
 
 def get_creators_summary() -> Dict[str, Any]:
-    """Return KPI counts and per-trade category breakdown for affiliate DIY creators."""
+    """Return KPI counts, all social platform counts, tier counts, US/CA geo options, and trade breakdown."""
     conn = get_connection()
     cur = conn.cursor()
 
@@ -1512,11 +1543,21 @@ def get_creators_summary() -> Dict[str, Any]:
         SELECT
             COUNT(*) as total_creators,
             SUM(CASE WHEN COALESCE(business_email, '') != '' THEN 1 ELSE 0 END) as with_email,
+            SUM(CASE WHEN COALESCE(youtube_url, '') != '' THEN 1 ELSE 0 END) as on_youtube,
             SUM(CASE WHEN COALESCE(instagram_url, '') != '' THEN 1 ELSE 0 END) as on_instagram,
             SUM(CASE WHEN COALESCE(tiktok_url, '') != '' THEN 1 ELSE 0 END) as on_tiktok,
+            SUM(CASE WHEN COALESCE(facebook_url, '') != '' THEN 1 ELSE 0 END) as on_facebook,
+            SUM(CASE WHEN COALESCE(x_url, '') != '' THEN 1 ELSE 0 END) as on_x,
+            SUM(CASE WHEN COALESCE(twitch_url, '') != '' THEN 1 ELSE 0 END) as on_twitch,
+            SUM(CASE WHEN COALESCE(bluesky_url, '') != '' THEN 1 ELSE 0 END) as on_bluesky,
             SUM(CASE WHEN COALESCE(x_url, '') != '' OR COALESCE(facebook_url, '') != '' OR COALESCE(twitch_url, '') != '' THEN 1 ELSE 0 END) as on_x_fb_twitch,
             SUM(CASE WHEN audience_tier IN ('micro', 'mid') THEN 1 ELSE 0 END) as micro_mid_tier,
-            SUM(CASE WHEN country IN ('Canada', 'United States') THEN 1 ELSE 0 END) as north_america
+            SUM(CASE WHEN country IN ('Canada', 'United States') THEN 1 ELSE 0 END) as north_america,
+            SUM(CASE WHEN audience_tier = 'nano' THEN 1 ELSE 0 END) as tier_nano,
+            SUM(CASE WHEN audience_tier = 'micro' THEN 1 ELSE 0 END) as tier_micro,
+            SUM(CASE WHEN audience_tier = 'mid' THEN 1 ELSE 0 END) as tier_mid,
+            SUM(CASE WHEN audience_tier = 'macro' THEN 1 ELSE 0 END) as tier_macro,
+            SUM(CASE WHEN audience_tier = 'mega' THEN 1 ELSE 0 END) as tier_mega
         FROM creators
         """
     )
@@ -1524,11 +1565,56 @@ def get_creators_summary() -> Dict[str, Any]:
     kpis = {
         "total_creators": (kpi_row["total_creators"] or 0) if kpi_row else 0,
         "with_email": (kpi_row["with_email"] or 0) if kpi_row else 0,
+        "on_youtube": (kpi_row["on_youtube"] or 0) if kpi_row else 0,
         "on_instagram": (kpi_row["on_instagram"] or 0) if kpi_row else 0,
         "on_tiktok": (kpi_row["on_tiktok"] or 0) if kpi_row else 0,
+        "on_facebook": (kpi_row["on_facebook"] or 0) if kpi_row else 0,
+        "on_x": (kpi_row["on_x"] or 0) if kpi_row else 0,
+        "on_twitch": (kpi_row["on_twitch"] or 0) if kpi_row else 0,
+        "on_bluesky": (kpi_row["on_bluesky"] or 0) if kpi_row else 0,
         "on_x_fb_twitch": (kpi_row["on_x_fb_twitch"] or 0) if kpi_row else 0,
         "micro_mid_tier": (kpi_row["micro_mid_tier"] or 0) if kpi_row else 0,
         "north_america": (kpi_row["north_america"] or 0) if kpi_row else 0,
+    }
+    tier_counts = {
+        "nano": (kpi_row["tier_nano"] or 0) if kpi_row else 0,
+        "micro": (kpi_row["tier_micro"] or 0) if kpi_row else 0,
+        "mid": (kpi_row["tier_mid"] or 0) if kpi_row else 0,
+        "macro": (kpi_row["tier_macro"] or 0) if kpi_row else 0,
+        "mega": (kpi_row["tier_mega"] or 0) if kpi_row else 0,
+    }
+
+    cur.execute(
+        """
+        SELECT DISTINCT country, province_state, city
+        FROM creators
+        WHERE country IN ('United States', 'Canada')
+        """
+    )
+    provinces_by_country: Dict[str, set] = {"United States": set(), "Canada": set()}
+    cities_by_country: Dict[str, set] = {"United States": set(), "Canada": set()}
+    cities_by_province: Dict[str, set] = {}
+    all_provinces: set = set()
+    all_cities: set = set()
+    for row in cur.fetchall():
+        ctry = (row["country"] or "").strip()
+        prov = (row["province_state"] or "").strip()
+        city_val_row = (row["city"] or "").strip()
+        if prov:
+            provinces_by_country.setdefault(ctry, set()).add(prov)
+            all_provinces.add(prov)
+        if city_val_row:
+            cities_by_country.setdefault(ctry, set()).add(city_val_row)
+            all_cities.add(city_val_row)
+            if prov:
+                cities_by_province.setdefault(prov, set()).add(city_val_row)
+
+    geo_options = {
+        "provinces_by_country": {k: sorted(v) for k, v in provinces_by_country.items()},
+        "cities_by_country": {k: sorted(v) for k, v in cities_by_country.items()},
+        "cities_by_province": {k: sorted(v) for k, v in cities_by_province.items()},
+        "all_provinces": sorted(all_provinces),
+        "all_cities": sorted(all_cities),
     }
 
     cur.execute(
@@ -1549,5 +1635,7 @@ def get_creators_summary() -> Dict[str, Any]:
 
     return {
         "kpis": kpis,
+        "tier_counts": tier_counts,
+        "geo_options": geo_options,
         "category_breakdown": category_breakdown,
     }

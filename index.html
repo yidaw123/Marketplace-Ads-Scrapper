@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Handyman Market Research & Lead Explorer</title>
-  <link rel="stylesheet" href="./static/styles.css?v=22" />
+  <link rel="stylesheet" href="./static/styles.css?v=23" />
 </head>
 <body>
   <div class="container">
@@ -25,7 +25,7 @@
     <!-- Top-Level Page Tabs -->
     <nav class="main-tabs" aria-label="Workspace Sections">
       <button type="button" class="page-tab active" id="tab-btn-listings" onclick="switchMainTab('listings')">
-        All Listings
+        Market Listings
       </button>
       <button type="button" class="page-tab" id="tab-btn-creators" onclick="switchMainTab('creators')">
         Affiliate Creators
@@ -379,6 +379,7 @@
           </div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;">
             <button id="scrape-creators-btn" onclick="triggerCreatorsScrape()">Scrape DIY Creators</button>
+            <button class="secondary" id="email-template-btn" onclick="openEmailTemplateModal()">Email Template</button>
             <button class="secondary" id="export-creators-btn" onclick="handleExportCreatorsCsv(event)">Export Creators CSV</button>
           </div>
         </div>
@@ -387,9 +388,9 @@
       <!-- Creators KPI Strip -->
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
         <h2 style="font-size:0.95rem;font-weight:600;color:var(--text);">Section 1: Creator Outreach Summary &amp; Quick Filters</h2>
-        <span style="font-size:0.76rem;color:var(--muted);">Click any KPI card to filter creators below</span>
+        <span style="font-size:0.76rem;color:var(--muted);">Click any KPI card, platform, or audience tier to filter creators below</span>
       </div>
-      <div class="kpi-strip" style="margin-bottom:18px;">
+      <div class="kpi-strip" style="margin-bottom:14px;">
         <div class="kpi-card active" id="ckpi-card-all" onclick="quickFilterCreators('all')">
           <div class="kpi-label">Total DIY Creators</div>
           <div class="kpi-val" id="ckpi-total" style="color:#60a5fa">0</div>
@@ -400,20 +401,77 @@
           <div class="kpi-val" id="ckpi-email" style="color:#34d399">0</div>
           <div class="kpi-sub">Direct affiliate outreach</div>
         </div>
-        <div class="kpi-card" id="ckpi-card-instagram" onclick="quickFilterCreators('instagram')">
-          <div class="kpi-label">On Instagram</div>
-          <div class="kpi-val" id="ckpi-ig" style="color:#f472b6">0</div>
-          <div class="kpi-sub">Linked IG profiles</div>
-        </div>
-        <div class="kpi-card" id="ckpi-card-tiktok" onclick="quickFilterCreators('tiktok')">
-          <div class="kpi-label">On TikTok</div>
-          <div class="kpi-val" id="ckpi-tt" style="color:#2dd4bf">0</div>
-          <div class="kpi-sub">Short-form DIY video pros</div>
+        <div class="kpi-card" id="ckpi-card-north_america" onclick="quickFilterCreators('north_america')">
+          <div class="kpi-label">US &amp; Canada</div>
+          <div class="kpi-val" id="ckpi-na" style="color:#a78bfa">0</div>
+          <div class="kpi-sub">Target local regions</div>
         </div>
         <div class="kpi-card" id="ckpi-card-micro_mid" onclick="quickFilterCreators('micro_mid')">
           <div class="kpi-label">Micro &amp; Mid-Tier</div>
           <div class="kpi-val" id="ckpi-micro-mid" style="color:#fbbf24">0</div>
           <div class="kpi-sub">10K &ndash; 500K audience</div>
+        </div>
+      </div>
+
+      <!-- Interactive All Social Platforms Filter Strip -->
+      <div class="quick-strip-card">
+        <div class="quick-strip-header">
+          <span class="quick-strip-title">Social Platforms</span>
+          <span style="font-size:0.74rem;color:var(--muted);">Filter creators by any linked social channel</span>
+        </div>
+        <div class="quick-pill-strip" id="creator-platform-strip">
+          <button type="button" class="quick-pill active" data-plat="all" onclick="setCreatorPlatformQuick('all')">
+            All Platforms <span class="quick-pill-count" id="splat-count-all">0</span>
+          </button>
+          <button type="button" class="quick-pill" data-plat="youtube" onclick="setCreatorPlatformQuick('youtube')">
+            YouTube <span class="quick-pill-count" id="splat-count-youtube">0</span>
+          </button>
+          <button type="button" class="quick-pill" data-plat="instagram" onclick="setCreatorPlatformQuick('instagram')">
+            Instagram <span class="quick-pill-count" id="splat-count-instagram">0</span>
+          </button>
+          <button type="button" class="quick-pill" data-plat="tiktok" onclick="setCreatorPlatformQuick('tiktok')">
+            TikTok <span class="quick-pill-count" id="splat-count-tiktok">0</span>
+          </button>
+          <button type="button" class="quick-pill" data-plat="facebook" onclick="setCreatorPlatformQuick('facebook')">
+            Facebook <span class="quick-pill-count" id="splat-count-facebook">0</span>
+          </button>
+          <button type="button" class="quick-pill" data-plat="x" onclick="setCreatorPlatformQuick('x')">
+            X / Twitter <span class="quick-pill-count" id="splat-count-x">0</span>
+          </button>
+          <button type="button" class="quick-pill" data-plat="twitch" onclick="setCreatorPlatformQuick('twitch')">
+            Twitch <span class="quick-pill-count" id="splat-count-twitch">0</span>
+          </button>
+          <button type="button" class="quick-pill" data-plat="bluesky" onclick="setCreatorPlatformQuick('bluesky')">
+            Bluesky <span class="quick-pill-count" id="splat-count-bluesky">0</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Interactive Total Audience Tier Filter Strip -->
+      <div class="quick-strip-card" style="margin-bottom:18px;">
+        <div class="quick-strip-header">
+          <span class="quick-strip-title">Total Audience Tier</span>
+          <span style="font-size:0.74rem;color:var(--muted);">Filter creators by follower / subscriber size</span>
+        </div>
+        <div class="quick-pill-strip" id="creator-tier-strip">
+          <button type="button" class="quick-pill active" data-tier="all" onclick="setCreatorTierQuick('all')">
+            All Sizes <span class="quick-pill-count" id="stier-count-all">0</span>
+          </button>
+          <button type="button" class="quick-pill" data-tier="nano" onclick="setCreatorTierQuick('nano')">
+            Nano (&lt;10K) <span class="quick-pill-count" id="stier-count-nano">0</span>
+          </button>
+          <button type="button" class="quick-pill" data-tier="micro" onclick="setCreatorTierQuick('micro')">
+            Micro (10K&ndash;100K) <span class="quick-pill-count" id="stier-count-micro">0</span>
+          </button>
+          <button type="button" class="quick-pill" data-tier="mid" onclick="setCreatorTierQuick('mid')">
+            Mid-Tier (100K&ndash;500K) <span class="quick-pill-count" id="stier-count-mid">0</span>
+          </button>
+          <button type="button" class="quick-pill" data-tier="macro" onclick="setCreatorTierQuick('macro')">
+            Macro (500K&ndash;1M) <span class="quick-pill-count" id="stier-count-macro">0</span>
+          </button>
+          <button type="button" class="quick-pill" data-tier="mega" onclick="setCreatorTierQuick('mega')">
+            Mega (1M+) <span class="quick-pill-count" id="stier-count-mega">0</span>
+          </button>
         </div>
       </div>
 
@@ -430,12 +488,12 @@
       <div class="filter-panel" id="creators-filter-panel">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.06);flex-wrap:wrap;gap:6px;">
           <h2 style="font-size:0.95rem;font-weight:600;color:var(--text);">Section 2: Filter Creators &amp; Export Outreach List</h2>
-          <span style="font-size:0.76rem;color:var(--muted);">Filter by trade bucket, social platform, audience size, or business email</span>
+          <span style="font-size:0.76rem;color:var(--muted);">Filter by trade bucket, social platform, total audience tier, US/Canada location, or business email</span>
         </div>
         <div class="filter-grid" style="grid-template-columns:1.5fr 1fr 1fr 1fr 1fr;">
           <div class="field">
             <label for="creator-search">Keyword Search</label>
-            <input type="text" id="creator-search" placeholder="Search name, handle, bio, or email..." oninput="debouncedLoadCreators()" />
+            <input type="text" id="creator-search" placeholder="Search name, handle, bio, email, or city..." oninput="debouncedLoadCreators()" />
           </div>
           <div class="field">
             <label for="creator-category">Trade Category</label>
@@ -451,7 +509,7 @@
           </div>
           <div class="field">
             <label for="creator-platform">Social Platform</label>
-            <select id="creator-platform" onchange="loadCreators()">
+            <select id="creator-platform" onchange="onCreatorPlatformSelectChange()">
               <option value="all">Any Platform</option>
               <option value="instagram">Instagram</option>
               <option value="tiktok">TikTok</option>
@@ -463,18 +521,19 @@
             </select>
           </div>
           <div class="field">
-            <label for="creator-tier">Audience Tier</label>
-            <select id="creator-tier" onchange="loadCreators()">
+            <label for="creator-tier">Total Audience Tier</label>
+            <select id="creator-tier" onchange="onCreatorTierSelectChange()">
               <option value="all">All Sizes</option>
               <option value="micro_mid">Micro + Mid-Tier (10K &ndash; 500K)</option>
-              <option value="macro">Macro (500K+)</option>
+              <option value="mega">Mega (1M+)</option>
+              <option value="macro">Macro (500K &ndash; 1M)</option>
               <option value="mid">Mid-Tier (100K &ndash; 500K)</option>
               <option value="micro">Micro (10K &ndash; 100K)</option>
               <option value="nano">Nano (&lt;10K)</option>
             </select>
           </div>
         </div>
-        <div class="filter-grid-secondary" style="grid-template-columns:1fr 1fr 1fr auto;">
+        <div class="filter-grid-secondary">
           <div class="field">
             <label for="creator-contact">Contact Info</label>
             <select id="creator-contact" onchange="loadCreators()">
@@ -485,11 +544,24 @@
           </div>
           <div class="field">
             <label for="creator-country">Country</label>
-            <select id="creator-country" onchange="loadCreators()">
+            <select id="creator-country" onchange="onCreatorCountryChange()">
               <option value="all">All Countries</option>
+              <option value="North America">US &amp; Canada</option>
               <option value="United States">United States</option>
               <option value="Canada">Canada</option>
               <option value="Other">Other / Unlisted</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="creator-province">Province / State (US &amp; CA)</label>
+            <select id="creator-province" onchange="onCreatorProvinceChange()">
+              <option value="all">All States &amp; Provinces</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="creator-city">City (US &amp; CA)</label>
+            <select id="creator-city" onchange="loadCreators()">
+              <option value="all">All Cities</option>
             </select>
           </div>
           <div class="field">
@@ -573,6 +645,71 @@
     </div>
   </div>
 
-  <script src="./static/app.js?v=31"></script>
+  <!-- Affiliate Outreach Email Template Modal -->
+  <div class="modal-backdrop" id="email-template-modal">
+    <div class="modal" style="max-width:720px;">
+      <div class="card-header" style="padding:0 0 14px 0;margin-bottom:16px;">
+        <div>
+          <h2 id="email-modal-title">Affiliate Outreach Email Template</h2>
+          <div id="email-modal-recipient" style="font-size:0.77rem;color:var(--muted);margin-top:3px;">Customize once &amp; save to draft personalized affiliate emails in one click</div>
+        </div>
+        <button class="secondary" onclick="closeEmailTemplateModal()">Close</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+        <div class="form-group">
+          <label for="tpl-brand-name">Your Brand / Company</label>
+          <input type="text" id="tpl-brand-name" oninput="renderEmailDraftPreview()" />
+        </div>
+        <div class="form-group">
+          <label for="tpl-commission">Affiliate Offer</label>
+          <input type="text" id="tpl-commission" oninput="renderEmailDraftPreview()" />
+        </div>
+        <div class="form-group">
+          <label for="tpl-sender-name">Your Name / Title</label>
+          <input type="text" id="tpl-sender-name" oninput="renderEmailDraftPreview()" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="tpl-subject">Email Subject Template</label>
+        <input type="text" id="tpl-subject" oninput="renderEmailDraftPreview()" />
+      </div>
+      <div class="form-group">
+        <label for="tpl-body">Email Body Template</label>
+        <textarea id="tpl-body" rows="6" style="width:100%;background:var(--surface-subtle);border:1px solid var(--border);border-radius:7px;padding:9px 11px;color:var(--text);font-size:0.84rem;resize:vertical;" oninput="renderEmailDraftPreview()"></textarea>
+        <div class="merge-tags-row">
+          <button type="button" class="merge-tag-chip" onclick="insertTemplateTag('{{creator_name}}')">{{creator_name}}</button>
+          <button type="button" class="merge-tag-chip" onclick="insertTemplateTag('{{trade_category}}')">{{trade_category}}</button>
+          <button type="button" class="merge-tag-chip" onclick="insertTemplateTag('{{task_category}}')">{{task_category}}</button>
+          <button type="button" class="merge-tag-chip" onclick="insertTemplateTag('{{location}}')">{{location}}</button>
+          <button type="button" class="merge-tag-chip" onclick="insertTemplateTag('{{your_brand}}')">{{your_brand}}</button>
+          <button type="button" class="merge-tag-chip" onclick="insertTemplateTag('{{commission_offer}}')">{{commission_offer}}</button>
+          <button type="button" class="merge-tag-chip" onclick="insertTemplateTag('{{sender_name}}')">{{sender_name}}</button>
+        </div>
+      </div>
+
+      <div class="email-preview-box">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="font-size:0.75rem;font-weight:700;text-transform:uppercase;color:#93c5fd;">Live Draft Preview</span>
+          <span id="draft-preview-to" style="font-size:0.76rem;color:var(--muted);"></span>
+        </div>
+        <div style="margin-top:6px;font-size:0.82rem;color:#e2e8f0;"><strong>Subject:</strong> <span id="draft-preview-subject"></span></div>
+        <pre class="email-preview-body" id="draft-preview-body"></pre>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:16px;flex-wrap:wrap;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="secondary" onclick="resetEmailTemplate()">Reset Default</button>
+          <button type="button" class="secondary" id="tpl-save-btn" onclick="saveEmailTemplate()">Save Template Default</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="secondary" id="draft-copy-btn" onclick="copyRenderedDraft(false)">Copy Body</button>
+          <button type="button" id="draft-copy-all-btn" onclick="copyRenderedDraft(true)">Copy Subject + Body</button>
+          <a id="draft-mailto-link" href="#" class="badge b-cat" style="display:inline-flex;align-items:center;padding:8px 13px;font-size:0.82rem;font-weight:600;text-decoration:none;border-radius:7px;" target="_blank" rel="noopener noreferrer">Open in Mail App</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./static/app.js?v=32"></script>
 </body>
 </html>

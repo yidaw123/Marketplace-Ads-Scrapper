@@ -882,8 +882,267 @@ def enrich_posts_with_llm(
     return posts
 
 
+US_STATE_ABBR_TO_NAME: Dict[str, str] = {
+    "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas",
+    "CA": "California", "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware",
+    "DC": "District of Columbia", "FL": "Florida", "GA": "Georgia", "HI": "Hawaii",
+    "ID": "Idaho", "IL": "Illinois", "IN": "Indiana", "IA": "Iowa",
+    "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine",
+    "MD": "Maryland", "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota",
+    "MS": "Mississippi", "MO": "Missouri", "MT": "Montana", "NE": "Nebraska",
+    "NV": "Nevada", "NH": "New Hampshire", "NJ": "New Jersey", "NM": "New Mexico",
+    "NY": "New York", "NC": "North Carolina", "ND": "North Dakota", "OH": "Ohio",
+    "OK": "Oklahoma", "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island",
+    "SC": "South Carolina", "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas",
+    "UT": "Utah", "VT": "Vermont", "VA": "Virginia", "WA": "Washington",
+    "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming",
+}
+
+CA_PROV_ABBR_TO_NAME: Dict[str, str] = {
+    "AB": "Alberta", "BC": "British Columbia", "MB": "Manitoba",
+    "NB": "New Brunswick", "NL": "Newfoundland and Labrador",
+    "NS": "Nova Scotia", "NT": "Northwest Territories", "NU": "Nunavut",
+    "ON": "Ontario", "PE": "Prince Edward Island", "QC": "Quebec",
+    "SK": "Saskatchewan", "YT": "Yukon",
+}
+
+US_STATE_NAME_SET = set(US_STATE_ABBR_TO_NAME.values())
+CA_PROV_NAME_SET = set(CA_PROV_ABBR_TO_NAME.values())
+
+US_CA_MAJOR_CITIES: Dict[str, tuple[str, str]] = {
+    "New York": ("New York", "United States"),
+    "Brooklyn": ("New York", "United States"),
+    "Los Angeles": ("California", "United States"),
+    "San Diego": ("California", "United States"),
+    "San Francisco": ("California", "United States"),
+    "San Jose": ("California", "United States"),
+    "Sacramento": ("California", "United States"),
+    "Fresno": ("California", "United States"),
+    "Chicago": ("Illinois", "United States"),
+    "Houston": ("Texas", "United States"),
+    "San Antonio": ("Texas", "United States"),
+    "Dallas": ("Texas", "United States"),
+    "Fort Worth": ("Texas", "United States"),
+    "El Paso": ("Texas", "United States"),
+    "Philadelphia": ("Pennsylvania", "United States"),
+    "Pittsburgh": ("Pennsylvania", "United States"),
+    "Tucson": ("Arizona", "United States"),
+    "Seattle": ("Washington", "United States"),
+    "Spokane": ("Washington", "United States"),
+    "Denver": ("Colorado", "United States"),
+    "Boston": ("Massachusetts", "United States"),
+    "Detroit": ("Michigan", "United States"),
+    "Grand Rapids": ("Michigan", "United States"),
+    "Minneapolis": ("Minnesota", "United States"),
+    "Atlanta": ("Georgia", "United States"),
+    "Miami": ("Florida", "United States"),
+    "Tampa": ("Florida", "United States"),
+    "Orlando": ("Florida", "United States"),
+    "Jacksonville": ("Florida", "United States"),
+    "Raleigh": ("North Carolina", "United States"),
+    "Nashville": ("Tennessee", "United States"),
+    "Knoxville": ("Tennessee", "United States"),
+    "Chattanooga": ("Tennessee", "United States"),
+    "Memphis": ("Tennessee", "United States"),
+    "Las Vegas": ("Nevada", "United States"),
+    "Salt Lake City": ("Utah", "United States"),
+    "Indianapolis": ("Indiana", "United States"),
+    "Columbus": ("Ohio", "United States"),
+    "Cleveland": ("Ohio", "United States"),
+    "Cincinnati": ("Ohio", "United States"),
+    "Baltimore": ("Maryland", "United States"),
+    "Louisville": ("Kentucky", "United States"),
+    "Kansas City": ("Missouri", "United States"),
+    "St. Louis": ("Missouri", "United States"),
+    "Oklahoma City": ("Oklahoma", "United States"),
+    "Albuquerque": ("New Mexico", "United States"),
+    "Omaha": ("Nebraska", "United States"),
+    "Boise": ("Idaho", "United States"),
+    "Des Moines": ("Iowa", "United States"),
+    "Anchorage": ("Alaska", "United States"),
+    "Honolulu": ("Hawaii", "United States"),
+    "Toronto": ("Ontario", "Canada"),
+    "Ottawa": ("Ontario", "Canada"),
+    "Mississauga": ("Ontario", "Canada"),
+    "Vancouver": ("British Columbia", "Canada"),
+    "Kelowna": ("British Columbia", "Canada"),
+    "Montreal": ("Quebec", "Canada"),
+    "Québec City": ("Quebec", "Canada"),
+    "Quebec City": ("Quebec", "Canada"),
+    "Calgary": ("Alberta", "Canada"),
+    "Edmonton": ("Alberta", "Canada"),
+    "Winnipeg": ("Manitoba", "Canada"),
+    "Halifax": ("Nova Scotia", "Canada"),
+    "Saskatoon": ("Saskatchewan", "Canada"),
+    "Regina": ("Saskatchewan", "Canada"),
+}
+
+_FALSE_CITY_WORDS = {
+    "in", "at", "from", "the", "our", "my", "and", "for", "with", "near",
+    "based", "home", "best", "top", "free", "new", "all", "on", "to", "welcome",
+    "service", "services", "serving", "diy", "youtube", "instagram", "tiktok",
+    "facebook", "twitch", "twitter", "bluesky", "channel", "subscribe", "video",
+    "videos", "tips", "tricks", "projects", "project", "shop", "store", "link",
+    "links", "email", "contact", "about", "more", "work", "repair", "repairs",
+    "remodeling", "building", "carpentry", "plumbing", "electrical", "handyman",
+    "house", "yard", "landscaping", "roofing", "painting", "copyright", "privacy",
+    "terms", "policy", "login", "sign", "menu", "search", "skip", "content",
+}
+
+_BAD_ANYWHERE_CITY_WORDS = {
+    "building", "suite", "ste", "street", "avenue", "ave", "blvd", "boulevard",
+    "road", "rd", "drive", "dr", "lane", "ln", "floor", "tower", "plaza",
+    "llc", "inc", "corp", "ltd", "box", "po", "tatnall", "times",
+}
+
+_CITY_ABBR_RE = re.compile(
+    r"\b([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,2}),\s*("
+    + "|".join(sorted(list(US_STATE_ABBR_TO_NAME.keys()) + list(CA_PROV_ABBR_TO_NAME.keys())))
+    + r")\b(?![a-z])"
+)
+
+_ALL_PROV_STATE_NAMES = sorted(
+    list(US_STATE_NAME_SET | CA_PROV_NAME_SET),
+    key=len,
+    reverse=True,
+)
+_CITY_FULL_RE = re.compile(
+    r"\b([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,2}),\s*("
+    + "|".join(re.escape(n) for n in _ALL_PROV_STATE_NAMES)
+    + r")\b"
+)
+_STANDALONE_PROV_RE = re.compile(
+    r"\b(" + "|".join(re.escape(n) for n in _ALL_PROV_STATE_NAMES) + r")\b"
+)
+_MAJOR_CITY_RE = re.compile(
+    r"\b(" + "|".join(re.escape(c) for c in sorted(US_CA_MAJOR_CITIES.keys(), key=len, reverse=True)) + r")\b"
+)
+
+
+def _normalize_country_name(country: str) -> str:
+    raw = (country or "").strip()
+    low = raw.lower()
+    if low in ("us", "usa", "u.s.", "u.s.a.", "united states", "united states of america"):
+        return "United States"
+    if low in ("ca", "can", "canada"):
+        return "Canada"
+    return raw
+
+
+def _is_valid_city_candidate(candidate: str) -> bool:
+    clean = " ".join((candidate or "").strip().split())
+    if len(clean) < 3 or len(clean) > 28:
+        return False
+    if any(ch.isdigit() for ch in clean):
+        return False
+    words = [w.strip(".,'").lower() for w in clean.split() if w.strip(".,'")]
+    if not words or len(words) > 3:
+        return False
+    if words[0] in _FALSE_CITY_WORDS or words[-1] in _FALSE_CITY_WORDS:
+        return False
+    if all(w in _FALSE_CITY_WORDS for w in words):
+        return False
+    if any(w in _BAD_ANYWHERE_CITY_WORDS for w in words):
+        return False
+    if clean in US_STATE_NAME_SET or clean in CA_PROV_NAME_SET:
+        return False
+    return True
+
+
+def _resolve_region(region_code_or_name: str, allowed_country: str) -> tuple[str, str]:
+    """Return (province_state_name, inferred_country) if valid within allowed_country."""
+    if region_code_or_name in US_STATE_ABBR_TO_NAME:
+        prov, ctry = US_STATE_ABBR_TO_NAME[region_code_or_name], "United States"
+    elif region_code_or_name in CA_PROV_ABBR_TO_NAME:
+        prov, ctry = CA_PROV_ABBR_TO_NAME[region_code_or_name], "Canada"
+    elif region_code_or_name in US_STATE_NAME_SET:
+        prov, ctry = region_code_or_name, "United States"
+    elif region_code_or_name in CA_PROV_NAME_SET:
+        prov, ctry = region_code_or_name, "Canada"
+    else:
+        return "", ""
+    if allowed_country and allowed_country != ctry:
+        return "", ""
+    return prov, ctry
+
+
+def _scan_text_for_us_ca_geo(text: str, allowed_country: str) -> tuple[str, str, str]:
+    """Scan a single text blob for (city, province_state, country) within US & Canada."""
+    if not text:
+        return "", "", ""
+
+    for m in _CITY_ABBR_RE.finditer(text):
+        city_cand, code = m.group(1).strip(), m.group(2).strip()
+        if not _is_valid_city_candidate(city_cand):
+            continue
+        prov, ctry = _resolve_region(code, allowed_country)
+        if prov:
+            return city_cand, prov, ctry
+
+    for m in _CITY_FULL_RE.finditer(text):
+        city_cand, state_full = m.group(1).strip(), m.group(2).strip()
+        if not _is_valid_city_candidate(city_cand):
+            continue
+        prov, ctry = _resolve_region(state_full, allowed_country)
+        if prov:
+            return city_cand, prov, ctry
+
+    for m in _MAJOR_CITY_RE.finditer(text):
+        city_name = m.group(1)
+        if city_name == "New York" and text[m.end():m.end() + 6].lower() == " times":
+            continue
+        prov, ctry = US_CA_MAJOR_CITIES[city_name]
+        if allowed_country and allowed_country != ctry:
+            continue
+        canonical_city = "Quebec City" if city_name == "Québec City" else city_name
+        return canonical_city, prov, ctry
+
+    for m in _STANDALONE_PROV_RE.finditer(text):
+        prov, ctry = _resolve_region(m.group(1), allowed_country)
+        if prov:
+            return "", prov, ctry
+
+    return "", "", ""
+
+
+def extract_creator_location(
+    name: str,
+    bio: str,
+    country: str = "",
+    extra_text: str = "",
+) -> tuple[str, str, str]:
+    """
+    Extract (city, province_state, country) ONLY for United States and Canada creators.
+    Creators outside United States / Canada keep only their country with empty city and province_state.
+    """
+    norm_country = _normalize_country_name(country)
+    if norm_country and norm_country not in ("United States", "Canada"):
+        return "", "", norm_country
+
+    primary_text = f"{name or ''}\n{bio or ''}"
+    city, prov, inferred_country = _scan_text_for_us_ca_geo(primary_text, norm_country)
+
+    if extra_text and (not city or not prov):
+        allowed = norm_country or inferred_country
+        ex_city, ex_prov, ex_country = _scan_text_for_us_ca_geo(extra_text, allowed)
+        if ex_city and ex_prov:
+            if not prov or ex_prov == prov:
+                city, prov = ex_city, ex_prov
+                inferred_country = inferred_country or ex_country
+        elif ex_prov and not prov:
+            prov = ex_prov
+            inferred_country = inferred_country or ex_country
+
+    final_country = norm_country or inferred_country
+    if final_country not in ("United States", "Canada"):
+        return "", "", final_country
+    return city, prov, final_country
+
+
 def compute_audience_tier(count: int) -> str:
     """Bucket a creator's follower/subscriber count into standard affiliate outreach tiers."""
+    if count >= 1000000:
+        return "mega"
     if count >= 500000:
         return "macro"
     if count >= 100000:
@@ -896,7 +1155,8 @@ def compute_audience_tier(count: int) -> str:
 def classify_creator(creator: Dict[str, Any]) -> Dict[str, Any]:
     """
     Classify a DIY / home-improvement influencer into the same 10 Trade Categories
-    and Task Categories used across the dashboard, and assign an audience tier.
+    and Task Categories used across the dashboard, assign an audience tier,
+    and extract US/Canada geo fields.
     """
     name = (creator.get("name") or "").strip()
     bio = (creator.get("bio") or "").strip()
@@ -912,8 +1172,29 @@ def classify_creator(creator: Dict[str, Any]) -> Dict[str, Any]:
     audience_count = int(creator.get("audience_count") or 0)
     audience_tier = compute_audience_tier(audience_count)
 
+    city, province_state, country = extract_creator_location(
+        name=name,
+        bio=bio,
+        country=creator.get("country") or "",
+        extra_text=creator.get("_extra_geo_text") or "",
+    )
+    existing_city = (creator.get("city") or "").strip()
+    existing_prov = (creator.get("province_state") or "").strip()
+    if country in ("United States", "Canada"):
+        if not city and existing_city:
+            city = existing_city
+        if not province_state and existing_prov:
+            province_state = existing_prov
+    else:
+        city = ""
+        province_state = ""
+
+    cleaned = {k: v for k, v in creator.items() if k != "_extra_geo_text"}
     return {
-        **creator,
+        **cleaned,
+        "country": country,
+        "province_state": province_state,
+        "city": city,
         "primary_category": primary_category,
         "sub_service": sub_service,
         "secondary_categories": secondary_categories,

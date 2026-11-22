@@ -2385,6 +2385,8 @@ const SEARCHABLE_SELECT_IDS = [
   "creator-tier",
   "creator-contact",
   "creator-country",
+  "creator-province",
+  "creator-city",
   "creator-sort",
 ];
 
@@ -2571,20 +2573,60 @@ async function switchMainTab(tabName) {
 
 function computeStaticCreatorsSummary(snap) {
   const creators = snap.creators || [];
-  let withEmail = 0, onIg = 0, onTt = 0, onOther = 0, microMid = 0, northAm = 0;
+  let withEmail = 0, onYt = 0, onIg = 0, onTt = 0, onFb = 0, onX = 0, onTw = 0, onBsky = 0;
+  let onOther = 0, microMid = 0, northAm = 0;
+  const tierCounts = { nano: 0, micro: 0, mid: 0, macro: 0, mega: 0 };
+  const provByCountry = { "United States": new Set(), "Canada": new Set() };
+  const cityByCountry = { "United States": new Set(), "Canada": new Set() };
+  const cityByProv = {};
+  const allProvs = new Set();
+  const allCities = new Set();
   const catMap = {};
 
   creators.forEach(c => {
     const hasEmail = Boolean((c.business_email || "").trim());
+    const hasYt = Boolean((c.youtube_url || "").trim());
     const hasIg = Boolean((c.instagram_url || "").trim());
     const hasTt = Boolean((c.tiktok_url || "").trim());
-    const hasOther = Boolean((c.x_url || "").trim() || (c.facebook_url || "").trim() || (c.twitch_url || "").trim());
+    const hasFb = Boolean((c.facebook_url || "").trim());
+    const hasX = Boolean((c.x_url || "").trim());
+    const hasTw = Boolean((c.twitch_url || "").trim());
+    const hasBsky = Boolean((c.bluesky_url || "").trim());
+    const hasOther = hasX || hasFb || hasTw;
+
     if (hasEmail) withEmail++;
+    if (hasYt) onYt++;
     if (hasIg) onIg++;
     if (hasTt) onTt++;
+    if (hasFb) onFb++;
+    if (hasX) onX++;
+    if (hasTw) onTw++;
+    if (hasBsky) onBsky++;
     if (hasOther) onOther++;
     if (c.audience_tier === "micro" || c.audience_tier === "mid") microMid++;
-    if (c.country === "Canada" || c.country === "United States") northAm++;
+    if (Object.prototype.hasOwnProperty.call(tierCounts, c.audience_tier)) {
+      tierCounts[c.audience_tier]++;
+    }
+
+    const ctry = String(c.country || "").trim();
+    const isUsCa = ctry === "Canada" || ctry === "United States";
+    if (isUsCa) {
+      northAm++;
+      const prov = String(c.province_state || "").trim();
+      const city = String(c.city || "").trim();
+      if (prov) {
+        provByCountry[ctry].add(prov);
+        allProvs.add(prov);
+      }
+      if (city) {
+        cityByCountry[ctry].add(city);
+        allCities.add(city);
+        if (prov) {
+          if (!cityByProv[prov]) cityByProv[prov] = new Set();
+          cityByProv[prov].add(city);
+        }
+      }
+    }
 
     const cat = c.primary_category || "General Handyman & Odd Jobs";
     if (!catMap[cat]) {
@@ -2596,15 +2638,38 @@ function computeStaticCreatorsSummary(snap) {
     if (hasTt) catMap[cat].on_tiktok++;
   });
 
+  const sortedSet = s => Array.from(s).sort((a, b) => a.localeCompare(b));
+  const citiesByProvOut = {};
+  Object.keys(cityByProv).forEach(p => { citiesByProvOut[p] = sortedSet(cityByProv[p]); });
+
   return {
     kpis: {
       total_creators: creators.length,
       with_email: withEmail,
+      on_youtube: onYt,
       on_instagram: onIg,
       on_tiktok: onTt,
+      on_facebook: onFb,
+      on_x: onX,
+      on_twitch: onTw,
+      on_bluesky: onBsky,
       on_x_fb_twitch: onOther,
       micro_mid_tier: microMid,
       north_america: northAm,
+    },
+    tier_counts: tierCounts,
+    geo_options: {
+      provinces_by_country: {
+        "United States": sortedSet(provByCountry["United States"]),
+        "Canada": sortedSet(provByCountry["Canada"]),
+      },
+      cities_by_country: {
+        "United States": sortedSet(cityByCountry["United States"]),
+        "Canada": sortedSet(cityByCountry["Canada"]),
+      },
+      cities_by_province: citiesByProvOut,
+      all_provinces: sortedSet(allProvs),
+      all_cities: sortedSet(allCities),
     },
     category_breakdown: Object.values(catMap).sort((a, b) => b.total_creators - a.total_creators || b.with_email - a.with_email),
     categories_list: snap.categories_list || [],
@@ -2619,27 +2684,150 @@ async function loadCreatorsSummary() {
   if (countPill && res && res.kpis) {
     countPill.textContent = res.kpis.total_creators || 0;
   }
-  renderCreatorsKPIs(res.kpis || {});
+  renderCreatorsKPIs(res.kpis || {}, res.tier_counts || {});
+  updateCreatorGeoOptions(true);
+  syncCreatorStripPills();
   renderCreatorsCategoryChart(res.category_breakdown || []);
 }
 
-function renderCreatorsKPIs(kpis) {
+function renderCreatorsKPIs(kpis, tierCounts = {}) {
   const setVal = (id, v) => {
     const el = document.getElementById(id);
     if (el) el.textContent = v || 0;
   };
   setVal("ckpi-total", kpis.total_creators);
   setVal("ckpi-email", kpis.with_email);
-  setVal("ckpi-ig", kpis.on_instagram);
-  setVal("ckpi-tt", kpis.on_tiktok);
+  setVal("ckpi-na", kpis.north_america);
   setVal("ckpi-micro-mid", kpis.micro_mid_tier);
+
+  setVal("splat-count-all", kpis.total_creators);
+  setVal("splat-count-youtube", kpis.on_youtube);
+  setVal("splat-count-instagram", kpis.on_instagram);
+  setVal("splat-count-tiktok", kpis.on_tiktok);
+  setVal("splat-count-facebook", kpis.on_facebook);
+  setVal("splat-count-x", kpis.on_x);
+  setVal("splat-count-twitch", kpis.on_twitch);
+  setVal("splat-count-bluesky", kpis.on_bluesky);
+
+  setVal("stier-count-all", kpis.total_creators);
+  setVal("stier-count-nano", tierCounts.nano);
+  setVal("stier-count-micro", tierCounts.micro);
+  setVal("stier-count-mid", tierCounts.mid);
+  setVal("stier-count-macro", tierCounts.macro);
+  setVal("stier-count-mega", tierCounts.mega);
 }
 
 function syncActiveCreatorKpiCard(mode) {
-  ["all", "email", "instagram", "tiktok", "micro_mid"].forEach(k => {
+  ["all", "email", "north_america", "micro_mid"].forEach(k => {
     const el = document.getElementById(`ckpi-card-${k}`);
     if (el) el.classList.toggle("active", k === mode);
   });
+}
+
+function syncCreatorStripPills() {
+  const activePlat = document.getElementById("creator-platform")?.value || "all";
+  const activeTier = document.getElementById("creator-tier")?.value || "all";
+  document.querySelectorAll("#creator-platform-strip .quick-pill").forEach(btn => {
+    btn.classList.toggle("active", btn.getAttribute("data-plat") === activePlat);
+  });
+  document.querySelectorAll("#creator-tier-strip .quick-pill").forEach(btn => {
+    btn.classList.toggle("active", btn.getAttribute("data-tier") === activeTier);
+  });
+}
+
+function setCreatorPlatformQuick(plat) {
+  const platSel = document.getElementById("creator-platform");
+  if (platSel) platSel.value = plat || "all";
+  syncActiveCreatorKpiCard("");
+  syncCreatorStripPills();
+  if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
+  loadCreators();
+}
+
+function onCreatorPlatformSelectChange() {
+  syncCreatorStripPills();
+  loadCreators();
+}
+
+function setCreatorTierQuick(tier) {
+  const tierSel = document.getElementById("creator-tier");
+  if (tierSel) tierSel.value = tier || "all";
+  syncActiveCreatorKpiCard(tier === "micro_mid" ? "micro_mid" : "");
+  syncCreatorStripPills();
+  if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
+  loadCreators();
+}
+
+function onCreatorTierSelectChange() {
+  const val = document.getElementById("creator-tier")?.value || "all";
+  syncActiveCreatorKpiCard(val === "micro_mid" ? "micro_mid" : "");
+  syncCreatorStripPills();
+  loadCreators();
+}
+
+function updateCreatorGeoOptions(preserveSelections = true) {
+  const geo = (creatorsSummaryData && creatorsSummaryData.geo_options) || {};
+  const country = document.getElementById("creator-country")?.value || "all";
+  const provSel = document.getElementById("creator-province");
+  const citySel = document.getElementById("creator-city");
+  if (!provSel || !citySel) return;
+
+  const prevProv = preserveSelections ? (provSel.value || "all") : "all";
+  const prevCity = preserveSelections ? (citySel.value || "all") : "all";
+
+  if (country === "Other") {
+    provSel.innerHTML = `<option value="all">US &amp; Canada only</option>`;
+    provSel.value = "all";
+    citySel.innerHTML = `<option value="all">US &amp; Canada only</option>`;
+    citySel.value = "all";
+  } else {
+    let provs = [];
+    if (country === "United States") {
+      provs = (geo.provinces_by_country && geo.provinces_by_country["United States"]) || [];
+    } else if (country === "Canada") {
+      provs = (geo.provinces_by_country && geo.provinces_by_country["Canada"]) || [];
+    } else {
+      provs = geo.all_provinces || [];
+    }
+    const provLabel = country === "United States" ? "All US States" : country === "Canada" ? "All Canadian Provinces" : "All States & Provinces";
+    provSel.innerHTML = `<option value="all">${provLabel}</option>` +
+      provs.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
+    provSel.value = provs.includes(prevProv) ? prevProv : "all";
+
+    const chosenProv = provSel.value || "all";
+    let cities = [];
+    if (chosenProv !== "all") {
+      cities = (geo.cities_by_province && geo.cities_by_province[chosenProv]) || [];
+    } else if (country === "United States" || country === "Canada") {
+      cities = (geo.cities_by_country && geo.cities_by_country[country]) || [];
+    } else {
+      cities = geo.all_cities || [];
+    }
+    citySel.innerHTML = `<option value="all">All Cities</option>` +
+      cities.map(ci => `<option value="${esc(ci)}">${esc(ci)}</option>`).join("");
+    citySel.value = cities.includes(prevCity) ? prevCity : "all";
+  }
+
+  if (typeof syncSearchableSelect === "function") {
+    syncSearchableSelect("creator-province");
+    syncSearchableSelect("creator-city");
+  }
+}
+
+function onCreatorCountryChange() {
+  const provSel = document.getElementById("creator-province");
+  const citySel = document.getElementById("creator-city");
+  if (provSel) provSel.value = "all";
+  if (citySel) citySel.value = "all";
+  updateCreatorGeoOptions(false);
+  loadCreators();
+}
+
+function onCreatorProvinceChange() {
+  const citySel = document.getElementById("creator-city");
+  if (citySel) citySel.value = "all";
+  updateCreatorGeoOptions(true);
+  loadCreators();
 }
 
 function quickFilterCreators(mode) {
@@ -2647,15 +2835,22 @@ function quickFilterCreators(mode) {
   const platSel = document.getElementById("creator-platform");
   const tierSel = document.getElementById("creator-tier");
   const contactSel = document.getElementById("creator-contact");
+  const countrySel = document.getElementById("creator-country");
+  const provSel = document.getElementById("creator-province");
+  const citySel = document.getElementById("creator-city");
   if (platSel) platSel.value = "all";
   if (tierSel) tierSel.value = "all";
   if (contactSel) contactSel.value = "all";
+  if (countrySel) countrySel.value = "all";
+  if (provSel) provSel.value = "all";
+  if (citySel) citySel.value = "all";
 
   if (mode === "email" && contactSel) contactSel.value = "has_email";
-  else if (mode === "instagram" && platSel) platSel.value = "instagram";
-  else if (mode === "tiktok" && platSel) platSel.value = "tiktok";
+  else if (mode === "north_america" && countrySel) countrySel.value = "North America";
   else if (mode === "micro_mid" && tierSel) tierSel.value = "micro_mid";
 
+  updateCreatorGeoOptions(false);
+  syncCreatorStripPills();
   if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
   loadCreators();
 }
@@ -2715,10 +2910,12 @@ async function loadCreators() {
   const tier = document.getElementById("creator-tier")?.value || "all";
   const contact_filter = document.getElementById("creator-contact")?.value || "all";
   const country = document.getElementById("creator-country")?.value || "all";
+  const province_state = document.getElementById("creator-province")?.value || "all";
+  const city = document.getElementById("creator-city")?.value || "all";
   const search = document.getElementById("creator-search")?.value || "";
 
   const qs = new URLSearchParams({
-    category, sub_service, social_platform, tier, contact_filter, country, search,
+    category, sub_service, social_platform, tier, contact_filter, country, province_state, city, search,
   }).toString();
 
   const res = await fetchJsonWithFallback(`/api/creators?${qs}`, snap => {
@@ -2743,11 +2940,15 @@ async function loadCreators() {
       if (contact_filter === "has_contact" && !String(c.business_email || "").trim() && !String(c.website || "").trim()) return false;
       if (country === "Other") {
         if (c.country === "Canada" || c.country === "United States") return false;
+      } else if (country === "North America") {
+        if (c.country !== "Canada" && c.country !== "United States") return false;
       } else if (country !== "all" && c.country !== country) {
         return false;
       }
+      if (province_state !== "all" && c.province_state !== province_state) return false;
+      if (city !== "all" && c.city !== city) return false;
       if (q) {
-        const hay = `${c.name || ""} ${c.handle || ""} ${c.bio || ""} ${c.business_email || ""} ${c.website || ""}`.toLowerCase();
+        const hay = `${c.name || ""} ${c.handle || ""} ${c.bio || ""} ${c.business_email || ""} ${c.website || ""} ${c.country || ""} ${c.province_state || ""} ${c.city || ""}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -2806,6 +3007,15 @@ function copyCreatorEmail(email, btn) {
   }
 }
 
+function formatCreatorLocationText(c) {
+  if (!c) return "";
+  const ctry = String(c.country || "").trim();
+  if (ctry === "United States" || ctry === "Canada") {
+    return [c.city, c.province_state, ctry].map(v => String(v || "").trim()).filter(Boolean).join(", ");
+  }
+  return ctry;
+}
+
 function renderCreatorsPage() {
   const total = allFilteredCreators.length;
   const totalPages = Math.max(1, Math.ceil(total / creatorsPageSize));
@@ -2842,9 +3052,10 @@ function renderCreatorsPage() {
 
   tbody.innerHTML = rows.map(c => {
     const tier = String(c.audience_tier || "micro").toLowerCase();
-    const tierCls = tier === "macro" ? "tier-macro" : tier === "mid" ? "tier-mid" : tier === "nano" ? "tier-nano" : "tier-micro";
-    const tierLabel = tier === "macro" ? "Macro (500K+)" : tier === "mid" ? "Mid-Tier" : tier === "nano" ? "Nano" : "Micro";
+    const tierCls = tier === "mega" ? "tier-mega" : tier === "macro" ? "tier-macro" : tier === "mid" ? "tier-mid" : tier === "nano" ? "tier-nano" : "tier-micro";
+    const tierLabel = tier === "mega" ? "Mega (1M+)" : tier === "macro" ? "Macro (500K–1M)" : tier === "mid" ? "Mid-Tier" : tier === "nano" ? "Nano" : "Micro";
     const audLabel = c.audience_text || (c.audience_count ? `${Number(c.audience_count).toLocaleString()} followers` : "Creator");
+    const locLabel = formatCreatorLocationText(c);
 
     const socialHtml = socialLinkSpecs
       .filter(([field]) => String(c[field] || "").trim())
@@ -2858,8 +3069,12 @@ function renderCreatorsPage() {
       ? `<div class="email-copy-row">
            <a href="mailto:${esc(firstEmail)}" style="color:#34d399;font-size:0.8rem;font-weight:600;word-break:break-all;text-decoration:none;">${esc(emailStr)}</a>
            <button type="button" class="email-copy-btn" data-email="${esc(firstEmail)}" onclick="copyCreatorEmail(this.dataset.email, this)">Copy</button>
+           <button type="button" class="email-copy-btn" data-creator-id="${esc(c.creator_id)}" onclick="openEmailDraftForCreator(this.dataset.creatorId)">Draft Email</button>
          </div>`
-      : `<span style="color:var(--muted);font-size:0.78rem;">No direct email listed</span>`;
+      : `<div class="email-copy-row">
+           <span style="color:var(--muted);font-size:0.78rem;">No direct email listed</span>
+           <button type="button" class="email-copy-btn" data-creator-id="${esc(c.creator_id)}" onclick="openEmailDraftForCreator(this.dataset.creatorId)">Draft Outreach</button>
+         </div>`;
     const siteBlock = siteStr
       ? `<div style="margin-top:5px;"><a href="${esc(safeUrl(siteStr))}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa;font-size:0.77rem;word-break:break-all;">${esc(siteStr)}</a></div>`
       : "";
@@ -2868,7 +3083,7 @@ function renderCreatorsPage() {
       <tr>
         <td>
           <a class="post-title" href="${esc(safeUrl(c.profile_url))}" target="_blank" rel="noopener noreferrer">${esc(c.name)}</a>
-          <span style="font-size:0.76rem;color:var(--muted);margin-left:6px;">${esc(c.handle || "")}${c.country ? ` · ${esc(c.country)}` : ""}</span>
+          <span style="font-size:0.76rem;color:var(--muted);margin-left:6px;">${esc(c.handle || "")}${locLabel ? ` · ${esc(locLabel)}` : ""}</span>
           ${c.bio ? `<div class="post-body">${esc(c.bio)}</div>` : ""}
         </td>
         <td>
@@ -2896,7 +3111,7 @@ function renderCreatorsPage() {
 }
 
 async function resetCreatorFilters() {
-  ["creator-category", "creator-sub-service", "creator-platform", "creator-tier", "creator-contact", "creator-country"].forEach(id => {
+  ["creator-category", "creator-sub-service", "creator-platform", "creator-tier", "creator-contact", "creator-country", "creator-province", "creator-city"].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = "all";
   });
@@ -2906,6 +3121,8 @@ async function resetCreatorFilters() {
   if (sortEl) sortEl.value = "email_first";
   syncActiveCreatorKpiCard("all");
   updateCreatorSubServiceOptions();
+  updateCreatorGeoOptions(false);
+  syncCreatorStripPills();
   if (typeof syncAllSearchableSelects === "function") syncAllSearchableSelects();
   await loadCreators();
 }
@@ -2918,19 +3135,199 @@ function handleExportCreatorsCsv(evt) {
     return;
   }
   const headers = [
-    "Creator ID", "Name", "Handle", "Primary Platform", "Country",
+    "Creator ID", "Name", "Handle", "Primary Platform", "City", "Province / State", "Country",
     "Audience Count", "Audience Tier", "Trade Category", "Task Category",
     "Business Email", "Website / Link Hub", "YouTube URL", "Instagram URL",
     "TikTok URL", "Facebook URL", "X / Twitter URL", "Twitch URL", "Bluesky URL", "Bio",
   ];
-  const rowArrays = rows.map(c => [
-    c.creator_id, c.name, c.handle, c.primary_platform, c.country,
-    c.audience_count, c.audience_tier, c.primary_category, c.sub_service,
-    c.business_email || "", c.website || "", c.youtube_url || "", c.instagram_url || "",
-    c.tiktok_url || "", c.facebook_url || "", c.x_url || "", c.twitch_url || "", c.bluesky_url || "",
-    c.bio || "",
-  ]);
+  const rowArrays = rows.map(c => {
+    const isUsOrCa = c.country === "United States" || c.country === "Canada";
+    return [
+      c.creator_id, c.name, c.handle, c.primary_platform,
+      isUsOrCa ? (c.city || "") : "",
+      isUsOrCa ? (c.province_state || "") : "",
+      c.country || "",
+      c.audience_count, c.audience_tier, c.primary_category, c.sub_service,
+      c.business_email || "", c.website || "", c.youtube_url || "", c.instagram_url || "",
+      c.tiktok_url || "", c.facebook_url || "", c.x_url || "", c.twitch_url || "", c.bluesky_url || "",
+      c.bio || "",
+    ];
+  });
   _downloadCsv("diy_affiliate_creators.csv", headers, rowArrays);
+}
+
+// ==================== Affiliate Outreach Email Template Modal ====================
+const AFFILIATE_TEMPLATE_STORAGE_KEY = "diy_affiliate_email_template_v1";
+const DEFAULT_AFFILIATE_TEMPLATE = {
+  brand: "Our Home Services Marketplace",
+  commission: "20% recurring commission on booked home service jobs",
+  sender: "Partnerships Team",
+  subject: "Affiliate Partnership Idea for {{creator_name}} ({{trade_category}})",
+  body:
+    "Hi {{creator_name}},\n\n" +
+    "I've been following your {{trade_category}} videos — especially your tips on {{task_category}} — and love how clearly you help homeowners tackle projects.\n\n" +
+    "When viewers realize a project is bigger than a weekend DIY fix, {{your_brand}} matches them with vetted local pros. We'd love to invite you into our creator affiliate program offering {{commission_offer}} on every homeowner booking from your audience.\n\n" +
+    "Would you be open to a quick chat or me sending over partner details this week?\n\n" +
+    "Best regards,\n{{sender_name}}\n{{your_brand}}",
+};
+let activeDraftCreator = null;
+
+function _loadSavedEmailTemplate() {
+  try {
+    const raw = localStorage.getItem(AFFILIATE_TEMPLATE_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_AFFILIATE_TEMPLATE };
+    return { ...DEFAULT_AFFILIATE_TEMPLATE, ...JSON.parse(raw) };
+  } catch (_) {
+    return { ...DEFAULT_AFFILIATE_TEMPLATE };
+  }
+}
+
+function _populateTemplateInputs(tpl) {
+  const setV = (id, v) => {
+    const el = document.getElementById(id);
+    if (el) el.value = v || "";
+  };
+  setV("tpl-brand-name", tpl.brand);
+  setV("tpl-commission", tpl.commission);
+  setV("tpl-sender-name", tpl.sender);
+  setV("tpl-subject", tpl.subject);
+  setV("tpl-body", tpl.body);
+}
+
+function openEmailDraftForCreator(creatorId) {
+  const creator = (allFilteredCreators || []).find(c => String(c.creator_id) === String(creatorId)) || null;
+  openEmailTemplateModal(creator);
+}
+
+function openEmailTemplateModal(creator = null) {
+  activeDraftCreator = creator;
+  _populateTemplateInputs(_loadSavedEmailTemplate());
+  const titleEl = document.getElementById("email-modal-title");
+  const recEl = document.getElementById("email-modal-recipient");
+  if (titleEl) {
+    titleEl.textContent = creator ? `Draft Outreach Email: ${creator.name}` : "Affiliate Outreach Email Template";
+  }
+  if (recEl) {
+    const em = creator ? String(creator.business_email || "").split(",")[0].trim() : "";
+    recEl.textContent = creator
+      ? (em ? `Drafting personalized email for ${creator.name} (${em})` : `Drafting DM / outreach copy for ${creator.name} (no direct email listed)`)
+      : "Edit merge tags & copy below — saved automatically for all creator rows";
+  }
+  renderEmailDraftPreview();
+  const modal = document.getElementById("email-template-modal");
+  if (modal) modal.classList.add("open");
+}
+
+function closeEmailTemplateModal() {
+  const modal = document.getElementById("email-template-modal");
+  if (modal) modal.classList.remove("open");
+}
+
+function _applyEmailMergeTags(text, creator, tpl) {
+  const sample = creator || (allFilteredCreators && allFilteredCreators[0]) || {
+    name: "Creator Name",
+    primary_category: "Carpentry, Doors & Windows",
+    sub_service: "Door & trim repair",
+    city: "Austin",
+    province_state: "Texas",
+    country: "United States",
+  };
+  const loc = formatCreatorLocationText(sample) || "your area";
+  return String(text || "")
+    .replaceAll("{{creator_name}}", sample.name || "there")
+    .replaceAll("{{trade_category}}", sample.primary_category || "DIY & Home Improvement")
+    .replaceAll("{{task_category}}", sample.sub_service || "home repair projects")
+    .replaceAll("{{location}}", loc)
+    .replaceAll("{{your_brand}}", tpl.brand || DEFAULT_AFFILIATE_TEMPLATE.brand)
+    .replaceAll("{{commission_offer}}", tpl.commission || DEFAULT_AFFILIATE_TEMPLATE.commission)
+    .replaceAll("{{sender_name}}", tpl.sender || DEFAULT_AFFILIATE_TEMPLATE.sender);
+}
+
+function _readTemplateInputs() {
+  return {
+    brand: document.getElementById("tpl-brand-name")?.value || "",
+    commission: document.getElementById("tpl-commission")?.value || "",
+    sender: document.getElementById("tpl-sender-name")?.value || "",
+    subject: document.getElementById("tpl-subject")?.value || "",
+    body: document.getElementById("tpl-body")?.value || "",
+  };
+}
+
+function renderEmailDraftPreview() {
+  const tpl = _readTemplateInputs();
+  const sample = activeDraftCreator || (allFilteredCreators && allFilteredCreators[0]) || null;
+  const renderedSubj = _applyEmailMergeTags(tpl.subject, sample, tpl);
+  const renderedBody = _applyEmailMergeTags(tpl.body, sample, tpl);
+
+  const subjEl = document.getElementById("draft-preview-subject");
+  const bodyEl = document.getElementById("draft-preview-body");
+  const toEl = document.getElementById("draft-preview-to");
+  const mailtoEl = document.getElementById("draft-mailto-link");
+
+  if (subjEl) subjEl.textContent = renderedSubj;
+  if (bodyEl) bodyEl.textContent = renderedBody;
+
+  const toEmail = activeDraftCreator
+    ? String(activeDraftCreator.business_email || "").split(",")[0].trim()
+    : (sample ? String(sample.business_email || "").split(",")[0].trim() : "");
+  if (toEl) {
+    toEl.textContent = activeDraftCreator
+      ? (toEmail ? `To: ${toEmail}` : "No direct email on profile — copy to DM")
+      : (sample ? `Sample preview using ${sample.name}` : "Sample preview");
+  }
+  if (mailtoEl) {
+    const mailtoHref = `mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(renderedSubj)}&body=${encodeURIComponent(renderedBody)}`;
+    mailtoEl.href = mailtoHref;
+  }
+}
+
+function insertTemplateTag(tag) {
+  const bodyEl = document.getElementById("tpl-body");
+  if (!bodyEl) return;
+  const start = typeof bodyEl.selectionStart === "number" ? bodyEl.selectionStart : bodyEl.value.length;
+  const end = typeof bodyEl.selectionEnd === "number" ? bodyEl.selectionEnd : bodyEl.value.length;
+  bodyEl.value = bodyEl.value.slice(0, start) + tag + bodyEl.value.slice(end);
+  bodyEl.focus();
+  if (typeof bodyEl.setSelectionRange === "function") {
+    bodyEl.setSelectionRange(start + tag.length, start + tag.length);
+  }
+  renderEmailDraftPreview();
+}
+
+function saveEmailTemplate() {
+  const tpl = _readTemplateInputs();
+  try {
+    localStorage.setItem(AFFILIATE_TEMPLATE_STORAGE_KEY, JSON.stringify(tpl));
+  } catch (_) {}
+  const btn = document.getElementById("tpl-save-btn");
+  if (btn) {
+    const prev = btn.textContent;
+    btn.textContent = "Saved!";
+    setTimeout(() => { btn.textContent = prev; }, 1400);
+  }
+}
+
+function resetEmailTemplate() {
+  try {
+    localStorage.removeItem(AFFILIATE_TEMPLATE_STORAGE_KEY);
+  } catch (_) {}
+  _populateTemplateInputs({ ...DEFAULT_AFFILIATE_TEMPLATE });
+  renderEmailDraftPreview();
+}
+
+function copyRenderedDraft(includeSubject) {
+  const subj = document.getElementById("draft-preview-subject")?.textContent || "";
+  const body = document.getElementById("draft-preview-body")?.textContent || "";
+  const payload = includeSubject ? `Subject: ${subj}\n\n${body}` : body;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(payload).catch(() => {});
+  }
+  const btn = document.getElementById(includeSubject ? "draft-copy-all-btn" : "draft-copy-btn");
+  if (btn) {
+    const prev = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(() => { btn.textContent = prev; }, 1400);
+  }
 }
 
 async function triggerCreatorsScrape() {
@@ -2970,5 +3367,11 @@ async function triggerCreatorsScrape() {
 
 window.addEventListener("DOMContentLoaded", () => {
   initSearchableSelects();
+  const emailModal = document.getElementById("email-template-modal");
+  if (emailModal) {
+    emailModal.addEventListener("click", evt => {
+      if (evt.target === emailModal) closeEmailTemplateModal();
+    });
+  }
   loadDashboard();
 });

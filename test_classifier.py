@@ -4,7 +4,13 @@ found when auditing scraped data. Run with:  python -m unittest test_classifier.
 """
 import unittest
 
-from classifier import classify_post_rules, classify_creator, compute_audience_tier, extract_contact_info
+from classifier import (
+    classify_creator,
+    classify_post_rules,
+    compute_audience_tier,
+    extract_contact_info,
+    extract_creator_location,
+)
 from scrapers.creators_scraper import _extract_clean_emails
 
 
@@ -175,10 +181,41 @@ class ContactInfoTests(unittest.TestCase):
 
 class CreatorClassificationTests(unittest.TestCase):
     def test_audience_tier_thresholds(self):
+        self.assertEqual(compute_audience_tier(1500000), "mega")
         self.assertEqual(compute_audience_tier(750000), "macro")
         self.assertEqual(compute_audience_tier(150000), "mid")
         self.assertEqual(compute_audience_tier(25000), "micro")
         self.assertEqual(compute_audience_tier(3200), "nano")
+
+    def test_creator_location_us_ca_only(self):
+        self.assertEqual(
+            extract_creator_location("TileCoach", "Flooring contractor in Sacramento, CA", "United States"),
+            ("Sacramento", "California", "United States"),
+        )
+        self.assertEqual(
+            extract_creator_location("Vancouver Carpenter", "Drywall tips and tricks", ""),
+            ("Vancouver", "British Columbia", "Canada"),
+        )
+        self.assertEqual(
+            extract_creator_location("UK Builder", "Remodeling projects near London and Sacramento, CA", "United Kingdom"),
+            ("", "", "United Kingdom"),
+        )
+        self.assertEqual(
+            extract_creator_location("Garage Builder", "Projects, IN my shop", ""),
+            ("", "", ""),
+        )
+        self.assertEqual(
+            extract_creator_location("BYOT", "Using Milwaukee tools and Portland cement", "United States"),
+            ("", "", "United States"),
+        )
+        self.assertEqual(
+            extract_creator_location("WINNI", "1209 Tatnall Building Wilmington, DE", "United States"),
+            ("", "", "United States"),
+        )
+        self.assertEqual(
+            extract_creator_location("Pro", "Based in Milwaukee, WI", "United States"),
+            ("Milwaukee", "Wisconsin", "United States"),
+        )
 
     def test_creator_classified_into_trade_and_task_buckets(self):
         c = classify_creator(

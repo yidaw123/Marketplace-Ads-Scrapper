@@ -260,17 +260,40 @@ def _search_youtube_seed(query: str, default_category: str) -> List[Dict[str, st
     return list(found.values())[:10]
 
 
-def _extract_links_and_emails_from_url(url: str, timeout: int = 5) -> Tuple[List[str], List[str]]:
+def extract_visible_text_from_html(raw_html: str) -> str:
+    """Strip scripts/styles/tags from HTML so geo extraction only scans visible page copy."""
+    if not raw_html:
+        return ""
+    try:
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(raw_html, "html.parser")
+        for tag in soup(["script", "style", "noscript", "svg", "head"]):
+            tag.decompose()
+        return " ".join(soup.get_text(" ", strip=True).split())[:8000]
+    except Exception:
+        cleaned = re.sub(r"<(script|style|noscript)[^>]*>.*?</\1>", " ", raw_html, flags=re.I | re.S)
+        cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+        return " ".join(cleaned.split())[:8000]
+
+
+def _extract_page_signals(url: str, timeout: int = 5) -> Tuple[List[str], List[str], str]:
     try:
         html = _fetch_text(url, timeout=timeout)
     except Exception:
-        return [], []
+        return [], [], ""
     emails = _extract_clean_emails(html)
     social_urls = re.findall(
         r"https?://(?:www\.)?(?:instagram\.com|tiktok\.com|facebook\.com|twitter\.com|x\.com|twitch\.tv|bsky\.app)/[A-Za-z0-9._/@-]+",
         html,
         re.IGNORECASE,
     )
+    visible_text = extract_visible_text_from_html(html)
+    return emails, social_urls, visible_text
+
+
+def _extract_links_and_emails_from_url(url: str, timeout: int = 5) -> Tuple[List[str], List[str]]:
+    emails, social_urls, _ = _extract_page_signals(url, timeout=timeout)
     return emails, social_urls
 
 
@@ -333,10 +356,13 @@ def _fetch_youtube_creator_profile(seed: Dict[str, str]) -> Optional[Dict[str, A
     )
     socials = _classify_creator_links([u for u in raw_links if u])
     emails = _extract_clean_emails(desc)
+    extra_geo_chunks: List[str] = []
 
-    # Hop to Linktree/Beacons/Stan.store pages to uncover business email & cross-links (IG/TikTok/X/Twitch/FB)
+    # Hop to Linktree/Beacons/Stan.store pages to uncover business email, cross-links & location hints
     for hub_url in socials["link_hubs"][:2]:
-        hub_emails, hub_socials = _extract_links_and_emails_from_url(hub_url, timeout=5)
+        hub_emails, hub_socials, hub_text = _extract_page_signals(hub_url, timeout=5)
+        if hub_text:
+            extra_geo_chunks.append(hub_text)
         for em in hub_emails:
             if em not in emails:
                 emails.append(em)
@@ -346,13 +372,17 @@ def _fetch_youtube_creator_profile(seed: Dict[str, str]) -> Optional[Dict[str, A
                 if not socials[k] and extra[k]:
                     socials[k] = extra[k]
 
-    # If still no email and creator has a personal website, check homepage & /contact
-    if not emails and socials["website"]:
-        site_emails, site_socials = _extract_links_and_emails_from_url(socials["website"], timeout=4)
+    # Check creator's personal website for email and US/Canada geo text
+    if socials["website"] and (not emails or country in ("", "United States", "Canada")):
+        site_emails, site_socials, site_text = _extract_page_signals(socials["website"], timeout=4)
+        if site_text:
+            extra_geo_chunks.append(site_text)
         emails.extend(em for em in site_emails if em not in emails)
         if not emails:
             base = socials["website"].rstrip("/")
-            c_emails, _ = _extract_links_and_emails_from_url(f"{base}/contact", timeout=4)
+            c_emails, _, c_text = _extract_page_signals(f"{base}/contact", timeout=4)
+            if c_text:
+                extra_geo_chunks.append(c_text)
             emails.extend(em for em in c_emails if em not in emails)
         if site_socials:
             extra = _classify_creator_links(site_socials)
@@ -371,6 +401,7 @@ def _fetch_youtube_creator_profile(seed: Dict[str, str]) -> Optional[Dict[str, A
         "primary_platform": "youtube",
         "profile_url": canonical_yt,
         "country": country,
+        "_extra_geo_text": "\n".join(extra_geo_chunks)[:10000],
         "audience_count": sub_count,
         "audience_text": sub_text or (f"{sub_count:,} subscribers" if sub_count else ""),
         "default_category": seed["default_category"],
