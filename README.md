@@ -1,8 +1,8 @@
-# Market Place Web Scrapper Analysis
+# Marketplace Ads Scrapper
 
 A multi-platform scraper, work-type & intent classifier, and interactive demand & seasonality dashboard built for a **Handyman & Home Services Marketplace** startup.
 
-**Live Hosted App (GitHub Pages):** https://yidaw123.github.io/market-place-web-scrapper-analysis/
+**Live Hosted App (GitHub Pages):** https://yidaw123.github.io/Marketplace-Ads-Scrapper/
 
 ## Key Capabilities
 
