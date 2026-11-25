@@ -231,6 +231,21 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if os.path.exists(file_path):
                 with open(file_path, "rb") as f:
                     content = f.read()
+                if rel_name.endswith(".docx"):
+                    self.send_response(200)
+                    self.send_header(
+                        "Content-Type",
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    )
+                    self.send_header(
+                        "Content-Disposition",
+                        f'attachment; filename="{rel_name}"',
+                    )
+                    self.send_header("Content-Length", str(len(content)))
+                    self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+                    self.end_headers()
+                    self.wfile.write(content)
+                    return
                 ctype = (
                     "text/css"
                     if rel_name.endswith(".css")
