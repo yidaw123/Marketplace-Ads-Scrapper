@@ -146,7 +146,8 @@ SERVICE_CATEGORIES: Dict[str, Dict[str, Any]] = {
     "Cleaning & Home Care": {
         "keywords": [
             ("house cleaning", 6), ("home cleaning", 6), ("cleaning service", 6),
-            ("cleaning services", 6), ("deep clean", 5), ("deep cleaning", 6),
+            ("cleaning services", 6), ("cleaning business", 6), ("cleanfluencer", 6),
+            ("deep clean", 5), ("deep cleaning", 6),
             ("house cleaner", 6), ("cleaner", 4), ("cleaners", 4), ("maid", 5),
             ("maid service", 6), ("move out clean", 6), ("move-out clean", 6),
             ("move in clean", 5), ("airbnb cleaning", 6), ("office cleaning", 5),
@@ -1215,14 +1216,22 @@ def classify_creator(creator: Dict[str, Any]) -> Dict[str, Any]:
     name = (creator.get("name") or "").strip()
     bio = (creator.get("bio") or "").strip()
     seed_topic = (creator.get("seed_topic") or "").strip()
+    own_combined = f"{name} {bio}".lower()
     combined = f"{name} {bio} {seed_topic}".lower()
 
-    primary_category, secondary_categories, _ = _score_trade_categories(
-        f"{name} {seed_topic}",
-        combined,
-        creator.get("default_category"),
+    primary_category, secondary_categories, own_scores = _score_trade_categories(
+        name,
+        own_combined,
+        None,
     )
-    sub_service = detect_sub_service(primary_category, f"{name} {seed_topic}", combined)
+    has_own_specific = any(c != "General Handyman & Odd Jobs" and s >= 4 for c, s in own_scores)
+    if not has_own_specific and not (own_scores and own_scores[0][1] >= 6):
+        primary_category, secondary_categories, _ = _score_trade_categories(
+            f"{name} {seed_topic}",
+            combined,
+            creator.get("default_category"),
+        )
+    sub_service = detect_sub_service(primary_category, name, own_combined if has_own_specific else combined)
     audience_count = int(creator.get("audience_count") or 0)
     audience_tier = compute_audience_tier(audience_count)
 
@@ -1243,7 +1252,7 @@ def classify_creator(creator: Dict[str, Any]) -> Dict[str, Any]:
         city = ""
         province_state = ""
 
-    cleaned = {k: v for k, v in creator.items() if k != "_extra_geo_text"}
+    cleaned = {k: v for k, v in creator.items() if k not in ("_extra_geo_text", "_recent_items")}
     return {
         **cleaned,
         "country": country,

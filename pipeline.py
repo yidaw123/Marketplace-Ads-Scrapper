@@ -27,6 +27,7 @@ from scrapers import (
     scrape_bark_services,
     scrape_diy_creators,
 )
+from scrapers.creators_scraper import has_adult_or_onlyfans_signal, is_verified_diy_creator
 
 
 def run_scrape_pipeline(
@@ -231,7 +232,35 @@ def run_creators_scrape_pipeline(max_new_profiles: int = 85) -> Dict[str, Any]:
 
     new_stored = 0
     with_email = 0
+    rejected_guard = 0
     for c in raw_creators:
+        social_urls = [
+            c.get(k, "")
+            for k in (
+                "profile_url", "website", "youtube_url", "instagram_url", "tiktok_url",
+                "facebook_url", "x_url", "bluesky_url", "pinterest_url",
+                "threads_url", "linkedin_url", "reddit_url", "amazon_store_url",
+            )
+            if c.get(k)
+        ]
+        if has_adult_or_onlyfans_signal(
+            text=f"{c.get('name', '')} {c.get('handle', '')} {c.get('bio', '')} {c.get('business_email', '')}",
+            urls=social_urls,
+        ):
+            rejected_guard += 1
+            continue
+        if not is_verified_diy_creator(
+            name=c.get("name", ""),
+            handle=c.get("handle", ""),
+            bio=c.get("bio", ""),
+            platform=c.get("primary_platform", "youtube"),
+            website=c.get("website", ""),
+            social_urls=social_urls,
+            recent_content_items=c.get("_recent_items"),
+            followers_count=int(c.get("audience_count") or 0),
+        ):
+            rejected_guard += 1
+            continue
         classified = classify_creator(c)
         if upsert_creator(classified):
             new_stored += 1
@@ -242,5 +271,6 @@ def run_creators_scrape_pipeline(max_new_profiles: int = 85) -> Dict[str, Any]:
         "total_fetched": len(raw_creators),
         "new_stored": new_stored,
         "with_email": with_email,
-        "logs": [f"Scraped {len(raw_creators)} DIY creators ({new_stored} new, {with_email} with business email)"],
+        "rejected_guard": rejected_guard,
+        "logs": [f"Scraped {len(raw_creators)} verified DIY creators ({new_stored} new, {with_email} with business email)"],
     }

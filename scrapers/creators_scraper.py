@@ -52,19 +52,26 @@ CREATOR_SEARCH_SEEDS: List[Tuple[str, str]] = [
     ("toronto home improvement diy renovation", "General Handyman & Odd Jobs"),
     ("kitchen cabinet makeover budget diy", "Painting & Drywall"),
     ("house cleaning tips deep clean creator", "Cleaning & Home Care"),
+    ("speed cleaning house cleaner tips diy", "Cleaning & Home Care"),
     ("window cleaning carpet cleaning tips pro", "Cleaning & Home Care"),
-    ("declutter junk removal moving packing tips", "Moving, Hauling & Junk Removal"),
+    ("carpet cleaning satisfying upholstery clean pro", "Cleaning & Home Care"),
+    ("junk removal business haul away day in the life", "Moving, Hauling & Junk Removal"),
+    ("local moving company tips furniture moving pro", "Moving, Hauling & Junk Removal"),
     ("mobile auto detailing car wash tips", "Auto, Detailing & BBQ Service"),
+    ("car detailing interior deep clean ceramic coating", "Auto, Detailing & BBQ Service"),
     ("snow removal lawn care business canada", "Yardwork & Landscaping"),
+    ("ontario contractor home renovation diy", "General Handyman & Odd Jobs"),
+    ("handyman business day in the life repairs", "General Handyman & Odd Jobs"),
 ]
 
 BLUESKY_SEARCH_SEEDS: List[Tuple[str, str]] = [
     ("handyman home repair", "General Handyman & Odd Jobs"),
     ("diy home renovation", "General Handyman & Odd Jobs"),
-    ("woodworking carpentry", "Carpentry, Doors & Windows"),
-    ("diy plumbing electrician", "Plumbing & Drain"),
-    ("landscaping gardening diy", "Yardwork & Landscaping"),
-    ("drywall painting tiling", "Painting & Drywall"),
+    ("finish carpentry woodworking", "Carpentry, Doors & Windows"),
+    ("woodshop furniture build", "Carpentry, Doors & Windows"),
+    ("plumber plumbing repair", "Plumbing & Drain"),
+    ("lawn care landscaping", "Yardwork & Landscaping"),
+    ("drywall home remodeling", "Painting & Drywall"),
 ]
 
 _EXCLUDED_CREATOR_SLUGS = (
@@ -75,7 +82,270 @@ _EXCLUDED_CREATOR_SLUGS = (
     "boschtools", "familyhandyman", "bobvila", "mrhandyman", "rotorooter",
     "9news", "abcnews", "cbsnews", "nbcnews", "foxnews", "cnn", "bbcnews",
     "globalnews", "cbcnews", "ctvnews", "news12", "howtobasic",
+    # Corporate retailers, manufacturers, parts stores, media networks & non-DIY brands
+    "bestbuy", "deltafaucet", "sharkbite", "sharkbiteplumbing", "mitsubishihvac",
+    "mitsubishielectric", "bunnings", "bunningswarehouse", "bandq", "unilock",
+    "westerninterlock", "vivasanitary", "adbrimasonry", "marshallsgardens",
+    "gardensanddriveways", "newborncaulkguns", "acpideas", "plumbcraft", "resene",
+    "masterstrokebyresene", "kantosolutions", "amresupply", "partselect",
+    "repairclinic", "espares", "donsappliances", "boulevardhome", "blvdhome",
+    "appliancefactory", "fordummies", "finehomebuilding", "hometalk",
+    "decorhomeideas", "reallychannel", "discoveryplus", "kingswildproject",
+    "itchio", "homeassistant", "diymag", "todayshomeowner", "newyankeeworkshop",
+    "kohler", "moen", "pfister", "grohe", "americanstandard", "rheem", "trane",
+    "lennox", "carrier", "whirlpool", "frigidaire", "geappliances",
+    "sherwinwilliams", "benjaminmoore", "behrpaint", "rustoleum", "gorillaglue",
+    "kregtool", "festool", "stihl", "husqvarna", "egopowerplus", "johndeere",
+    "generac", "thumbtack", "taskrabbit", "homestars", "angieslist",
+    "thetileshop", "tileshop", "homeaglow", "windowcleaner",
+    "windowcleaningresource", "kitearmy", "angi", "handycom", "tipsunknow",
 )
+
+# Zero-tolerance adult / OnlyFans / NSFW domain & bio blocklists
+_ADULT_DOMAIN_RE = re.compile(
+    r"(?:"
+    r"onlyfans\.com|\bonlyfans\b|fansly\.com|\bfansly\b|fanvue\.com|\bfanvue\b|"
+    r"loyalfans\.com|\bloyalfans\b|admireme\.vip|justfor\.fans|manyvids\.com|\bmanyvids\b|"
+    r"clips4sale\.com|iwantclips\.com|chaturbate\.com|\bchaturbate\b|stripchat\.com|"
+    r"myfreecams\.com|camsoda\.com|bongacams\.com|cam4\.com|pornhub\.com|xvideos\.com|"
+    r"xnxx\.com|redgifs\.com|fetlife\.com|slushy\.com|fancentro\.com|pocketstars\.com|"
+    r"unlok\.me|xocasey\.com|clickcasey\.com|\bhungandhandy\b"
+    r")",
+    re.IGNORECASE,
+)
+
+_ADULT_TEXT_RE = re.compile(
+    r"(?:"
+    r"🔞|\bnsfw\b|\b18\+\b|\bonly\s*fans\b|"
+    r"\badult\s+(?:content|creator|model|film|entertainer|performer|work\w*)\b|"
+    r"\berotic\w*\b|\bnudes?\b|\blewds?\b|\bsex\s*work\w*\b|\buncensored\b|"
+    r"\bexplicit\s+content\b|\bcam\s*(?:girl|boy|model)\b|\bfindom\b|\bfeet\s*pics\b|"
+    r"\bsugar\s*baby\b|\bescort\b|\bporn(?:star|ography)?\b|\bhentai\b|\bsmut\b|"
+    r"\bfetish\b|\bboudoir\b|\blingerie\s+model\b|\bspicy\s+(?:content|page|links?)\b"
+    r")",
+    re.IGNORECASE,
+)
+
+_BSKY_ADULT_LABELS = {"porn", "sexual", "nudity", "nsfw", "graphic-media", "gore"}
+
+_CORPORATE_OR_INSTITUTION_BIO_RE = re.compile(
+    r"\b("
+    r"leading\s+manufacturer|premier\s+manufacturer|largest\s+supplier|"
+    r"leading\s+provider\s+of|we\s+manufacture\s+a|comprehensive\s+portfolio\s+includes|"
+    r"thousands\s+of\s+brand\s+new\s+appliances\s+on\s+sale|store\s+locations\s+are\s+in|"
+    r"catch\s+full\s+episodes|nationally\s+syndicated|"
+    r"most\s+widely\s+read\s+home\s+construction\s+magazine|worlds?\s+largest\s+diy\s+community|"
+    r"school\s+board|community\s+college|adjunct\s+faculty|university\s+press|"
+    r"professor\s+of\s+(?:art|comm|polisci|history|politics)|"
+    r"congressman|senator|state\s+rep|co-chair\s+of\s+the\s+labor\s+caucus|"
+    r"open\s+source\s+home\s+automation|indie\s+game\s+marketplace|"
+    r"welcome\s+to\s+the\s+official\s+[\w®™&.\s]{2,30}\s+youtube\s+channel"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_OFF_TOPIC_NICHE_RE = re.compile(
+    r"\b("
+    r"illustrator|sff\s+illustrations|comic\s+art|color\s+artist|concept\s+artist|"
+    r"character\s+design|portrait\s+artist|oil\s+and\s+digital|miniature\s+painting|"
+    r"warhammer|art\s+history|language\s+of\s+painting|painting\s+bootcamp|"
+    r"my\s+painting\s+course|painting\s+with\s+john|linocut|graphic\s+novels|"
+    r"manga|anime|fanart|vtuber|2d/3d\s+artist|game\s+developer|game\s+jam|"
+    r"gaming\s+historian|college\s+sports|aviation\s+journalist|climate\s+change\s+science|"
+    r"laserdisc|vibe\s+coding|beauty\s+and\s+lifestyle|secondhand\s+fashion|"
+    r"conscious\s+parenting|mommy\s+stuff\s+and\s+lifestyle|luxury\s+playing\s+card|"
+    r"soundbars,\s*tvs,\s*computers|installing\s+powerful\s+wi-?fi|"
+    r"vintage\s+tvs\s+and\s+radios|vintage\s+television|tube\s+radio|spare\s+car\s+keys|"
+    r"trucks\s+and\s+motorcycles|wrenches\s+on\s+rusty\s+junk|learn\s+how\s+to\s+fix\s+your\s+own\s+car"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_OFF_TOPIC_SITE_HOSTS = (
+    "artstation.com", "deviantart.com", "inprnt.com", "bandcamp.com",
+    "itch.io", "depop.com", "poshmark.com", "tomskey.com",
+    "simpletipcalculator.com", "chrisfixed.com", "nfsb.me", "ivyvilos.com",
+    "discoveryplus.com", "dummies.com", "kingswildproject.com",
+)
+
+_UNAMBIGUOUS_HOME_TRADE_RE = re.compile(
+    r"\b("
+    r"handyman|handy\s+man|handyperson|handymom|handydad|handy\s+homeowner|handy\s+neighbor|"
+    r"home\s+repair\w*|home\s+improvement\w*|home\s+renovation\w*|home\s+remodel\w*|"
+    r"house\s+renovation\w*|house\s+remodel\w*|fixer[- ]upper|renovating\s+(?:my|our|a|homes?)|"
+    r"remodeling\s+(?:projects?|contractor|homes?)|home\s+makeover\w*|room\s+makeover\w*|"
+    r"kitchen\s+(?:remodel\w*|makeover\w*|renovation\w*)|bathroom\s+(?:remodel\w*|renovation\w*|projects?)|"
+    r"basement\s+(?:renovation\w*|remodel\w*|framing)|home\s+maintenance|apartment\s+maintenance|"
+    r"property\s+maintenance|home\s+upgrade\w*|diy\s+home|home\s+diy|house\s+diy|"
+    r"around\s+the\s+house|for\s+your\s+home|"
+    r"carpenter\w*|carpentry|woodworker\w*|woodworking|woodshop|wood\s+shop|cabinetry|"
+    r"cabinet\s+(?:makeover\w*|build\w*|install\w*)|furniture\s+flip\w*|flipping\s+furniture|"
+    r"baseboard\w*|crown\s+molding|wainscoting|board\s+and\s+batten|door\s+install\w*|door\s+repair\w*|"
+    r"window\s+trim|deck\s+build\w*|deck\s+repair\w*|fence\s+build\w*|fence\s+repair\w*|pergola|"
+    r"drywall\w*|sheetrock|spackle|plastering|veneer\s+plaster|skim\s+coat|mudding|joint\s+compound|"
+    r"house\s+painter\w*|pro\s+painter\w*|paint\s+your\s+own\s+home|interior\s+painting|exterior\s+painting|"
+    r"plumber\w*|plumbing|leaky\s+(?:faucet|toilet|pipe)|toilet\s+repair\w*|faucet\s+install\w*|"
+    r"drain\s+cleaning|clogged\s+drain\w*|shower\s+valve|water\s+heater\w*|sump\s+pump|"
+    r"electrician\w*|electrical\s+(?:repair\w*|wiring|panel|outlet\w*|appliances?)|"
+    r"breaker\s+panel|light\s+fixture\w*|ceiling\s+fan\w*|recessed\s+light\w*|pot\s+light\w*|gfci|"
+    r"hvac\w*|furnace\w*|heat\s+pump\w*|mini\s+split\w*|air\s+conditioning|appliance\s+repair\w*|"
+    r"fix\s+washers\s+and\s+dryers|washer\s+and\s+dryer|"
+    r"tiling|tile\s+install\w*|tile\s+shower|tilecoach|grout|backsplash|flooring|"
+    r"vinyl\s+plank|lvp|hardwood\s+floor\w*|laminate\s+floor\w*|subfloor|"
+    r"roofer\w*|roofing|shingle\w*|gutter\w*|eavestrough\w*|downspout\w*|siding|masonry|"
+    r"tuckpointing|pressure\s+wash\w*|power\s+wash\w*|soft\s+wash\w*|"
+    r"lawn\s+care|lawncare|lawngoals|turf\s+management|landscaping|landscaper\w*|"
+    r"hardscaping|hardscaper\w*|pavers?|retaining\s+wall\w*|yard\s+transformation\w*|"
+    r"garden\s+transformation\w*|overgrown\s+(?:garden|yard|lawn)|snow\s+removal|snow\s+plow\w*|"
+    r"house\s+clean\w*|home\s+clean\w*|deep\s+clean\w*|cleaning\s+motivation|"
+    r"window\s+clean\w*|window\s+wash\w*|carpet\s+clean\w*|junk\s+removal|"
+    r"auto\s+detail\w*|car\s+detail\w*|mobile\s+detail\w*|ceramic\s+coating|paint\s+correction|"
+    r"bbq\s+clean\w*|grill\s+clean\w*"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_ACTION_DIY_RE = re.compile(
+    r"\b(diy|do[- ]it[- ]yourself\w*|diyer\w*|how[- ]to|renovat\w*|remodel\w*|fix\w*|repair\w*|install\w*|build\w*|paint\w*|mount\w*|clean\w*)\b",
+    re.IGNORECASE,
+)
+_HOME_OBJECT_RE = re.compile(
+    r"\b(home|homes|house|houses|homeowner\w*|apartment|condo|room|kitchen|bathroom|shower|toilet|sink|faucet|pipe|drain|basement|attic|garage|workshop|wall|walls|ceiling|floor|floors|door|doors|window|windows|trim|baseboard|molding|cabinet\w*|shelf|shelves|deck|patio|porch|fence|roof|gutter\w*|yard|lawn|garden|driveway|studs?|caulk\w*|grout|tile|power\s+tools?|thermostat)\b",
+    re.IGNORECASE,
+)
+
+_PROJECT_ITEM_KEYWORDS_RE = re.compile(
+    r"\b("
+    r"miter\s+saws?|table\s+saws?|circular\s+saws?|routers?|jigsaws?|plywood|2x4s?|workbench\w*|wood\s+glue|"
+    r"pocket\s+holes?|sanding|stain\w*\s+wood|caulk\w*|silicone|stud\s+finders?|drywall\w*|plaster\w*|"
+    r"skim\s+coat\w*|spackle|primer|paint\s+rollers?|sprayers?|faucets?|toilets?|sinks?|showers?|bathtubs?|"
+    r"drains?|p-traps?|pipes?|valves?|outlets?|switches|switch|breakers?|wiring|ceiling\s+fans?|"
+    r"light\s+fixtures?|thermostats?|furnaces?|ac\s+units?|mini\s+splits?|washers?|dryers?|dishwashers?|"
+    r"fridges?|refrigerators?|tiles?|tiling|grout\w*|mortar|thinset|lvp|laminate|hardwood|subfloors?|"
+    r"baseboards?|trim|moldings?|mouldings?|casings?|doors?|hinges?|deadbolts?|windows?|weatherstrip\w*|"
+    r"decks?|patios?|paver\w*|fences?|fencing|concrete|pergolas?|sheds?|roof\w*|shingle\w*|"
+    r"flashing|gutter\w*|eavestrough\w*|siding|pressure\s+wash\w*|power\s+wash\w*|soft\s+wash\w*|"
+    r"lawns?|mowers?|mowing|edging|mulch\w*|weed\w*|hedges?|prun\w*|garden\s+beds?|irrigation|"
+    r"sprinklers?|snow\s+blowers?|shovel\w*|cabinet\w*|countertops?|backsplash\w*|vanit(?:y|ies)|"
+    r"closets?|shelv\w*|floating\s+shelf|tv\s+mount\w*|ikea|renovat\w*|remodel\w*|fixer[- ]upper|"
+    r"room\s+makeovers?|home\s+repair\w*|handyman|carpentr\w*|woodwork\w*|plumb\w*|electricians?|"
+    r"hvac\w*|tool\s+review\w*|car\s+detail\w*|auto\s+detail\w*|ceramic\s+coat\w*|car\s+wash\w*|"
+    r"deep\s+clean\w*|carpet\s+clean\w*|window\s+clean\w*|house\s+clean\w*|junk\s+removal|dump\s+runs?"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_HANDLE_TRADE_CUE_RE = re.compile(
+    r"(carpenter|woodwork|woodshop|bourbonmoth|handy|plumb|electric|drywall|paint|tile|floor|"
+    r"roof|lawn|landscap|hvac|reno|remodel|build|fix|diy|detail|clean|mower|gutter|wash)",
+    re.IGNORECASE,
+)
+
+
+def has_adult_or_onlyfans_signal(
+    text: str = "",
+    urls: Optional[List[str]] = None,
+    raw_html: str = "",
+    bsky_labels: Optional[List[Dict[str, Any]]] = None,
+) -> bool:
+    """Return True if any OnlyFans, Fansly, adult domain, NSFW bio marker, or ATProto adult label is present."""
+    if bsky_labels:
+        for lbl in bsky_labels:
+            if isinstance(lbl, dict) and str(lbl.get("val") or "").strip().lower() in _BSKY_ADULT_LABELS:
+                return True
+    if urls:
+        for u in urls:
+            if u and _ADULT_DOMAIN_RE.search(str(u)):
+                return True
+    if raw_html and _ADULT_DOMAIN_RE.search(raw_html):
+        return True
+    if text and (_ADULT_DOMAIN_RE.search(text) or _ADULT_TEXT_RE.search(text)):
+        return True
+    return False
+
+
+def is_diy_project_content_item(item_text: str) -> bool:
+    """Return True if a single video title or feed post is about a home DIY, handyman, trade, or home-care topic."""
+    if not item_text:
+        return False
+    if _ADULT_DOMAIN_RE.search(item_text) or _ADULT_TEXT_RE.search(item_text):
+        return False
+    if _UNAMBIGUOUS_HOME_TRADE_RE.search(item_text) or _PROJECT_ITEM_KEYWORDS_RE.search(item_text):
+        return True
+    return bool(_ACTION_DIY_RE.search(item_text) and _HOME_OBJECT_RE.search(item_text))
+
+
+def is_verified_diy_creator(
+    name: str,
+    handle: str,
+    bio: str,
+    platform: str = "youtube",
+    website: str = "",
+    social_urls: Optional[List[str]] = None,
+    recent_content_items: Optional[List[str]] = None,
+    followers_count: int = 0,
+    bsky_labels: Optional[List[Dict[str, Any]]] = None,
+) -> bool:
+    """
+    Two-step verification ensuring a candidate is a genuine DIY / Handyman / Home-Services
+    influencer (and NEVER an OnlyFans/NSFW account, corporate retailer/manufacturer, fine-art
+    illustrator, gamer, beauty vlogger, or random profile that happened to mention one keyword):
+      1. Zero-tolerance adult / OnlyFans / NSFW / corporate / off-topic screening.
+      2. Profile identity + multi-post/multi-video Home DIY track-record double-check.
+    """
+    clean_name = (name or "").strip()
+    clean_handle = (handle or "").strip()
+    clean_bio = (bio or "").strip()
+    clean_site = (website or "").strip().lower()
+    all_urls = [u for u in [clean_site, *(social_urls or [])] if u]
+    combined_profile = f"{clean_name} {clean_handle} {clean_bio}"
+
+    # Step 1: Hard block adult/OnlyFans/NSFW, excluded corporate brands, and off-topic niches
+    if not clean_name or clean_handle.endswith(".invalid"):
+        return False
+    if _is_excluded_creator(clean_name, clean_handle):
+        return False
+    if has_adult_or_onlyfans_signal(
+        text=" ".join([combined_profile, *(recent_content_items or [])]),
+        urls=all_urls,
+        bsky_labels=bsky_labels,
+    ):
+        return False
+    if _CORPORATE_OR_INSTITUTION_BIO_RE.search(combined_profile):
+        return False
+    if _OFF_TOPIC_NICHE_RE.search(f"{combined_profile} {clean_site}"):
+        return False
+    if clean_site and any(host in clean_site for host in _OFF_TOPIC_SITE_HOSTS):
+        return False
+
+    has_unambiguous_bio = bool(_UNAMBIGUOUS_HOME_TRADE_RE.search(combined_profile))
+    has_contextual_bio = has_unambiguous_bio or bool(
+        _ACTION_DIY_RE.search(combined_profile) and _HOME_OBJECT_RE.search(combined_profile)
+    )
+
+    items = [t.strip() for t in (recent_content_items or []) if t and t.strip()][:20]
+    diy_hits = sum(1 for t in items if is_diy_project_content_item(t))
+    total_items = len(items)
+
+    # Step 2: Platform-specific content track-record double-check
+    if platform == "bluesky":
+        if followers_count < 300 or not has_unambiguous_bio:
+            return False
+        if total_items < 5:
+            return False
+        return diy_hits >= 4 and (diy_hits / total_items) >= 0.30
+
+    # YouTube (or record re-verification):
+    if total_items > 0:
+        if total_items < 3:
+            return False
+        if has_contextual_bio and len(clean_bio) >= 20:
+            return diy_hits >= 3 and (diy_hits / total_items) >= 0.25
+        # Blank/minimal /about bio: require trade handle cue + overwhelming video track record
+        return bool(_HANDLE_TRADE_CUE_RE.search(f"{clean_name} {clean_handle}")) and diy_hits >= 6 and (diy_hits / total_items) >= 0.45
+
+    # Fallback when re-validating an already stored record without live recent_content_items
+    return has_unambiguous_bio or (has_contextual_bio and len(clean_bio) >= 35)
 
 _NON_TARGET_COUNTRIES = {
     "india", "pakistan", "bangladesh", "indonesia", "vietnam", "philippines",
@@ -165,7 +435,7 @@ _AFFILIATE_OR_RETAIL_HOSTS = (
     "hvacdirect.com", "gopjn.com", "pjatr.com", "pjtra.com", "pntra.com",
     "pntrac.com", "avantlink.com", "shareasale.com", "awin1.com", "howl.me",
     "sjv.io", "pxf.io", "dpbolvw.net", "tkqlhce.com", "jdoqocy.com",
-    "anrdoezrs.net",
+    "anrdoezrs.net", "docs.google.com", "drive.google.com", "forms.gle",
 )
 
 _LINK_HUB_HOSTS = (
@@ -295,13 +565,15 @@ def _parse_subscriber_count(sub_text: str) -> int:
 
 def _normalize_social_url(raw_url: str, keep_query: bool = False) -> str:
     u = (raw_url or "").strip()
-    if not u:
+    if not u or u.lower().startswith("mailto:"):
+        return ""
+    if "@" in u and "://" not in u and "/" not in u:
         return ""
     if not u.lower().startswith(("http://", "https://")):
         u = "https://" + u.lstrip("/")
     try:
         p = urlparse(u)
-        if not p.netloc:
+        if not p.netloc or "@" in p.netloc:
             return ""
         path = p.path.rstrip("/") or ""
         if not keep_query:
@@ -550,22 +822,45 @@ def _parse_html_page_signals(
     return emails, social_urls, visible_text, nav_candidates
 
 
-def _extract_page_signals(
+def _extract_page_signals_checked(
     url: str,
     timeout: int = 5,
     allowed_site_domain: str = "",
     require_context_for_third_party: bool = False,
-) -> Tuple[List[str], List[str], str]:
+    check_text_adult: bool = True,
+) -> Tuple[List[str], List[str], str, bool]:
     try:
         raw_html = _fetch_text(url, timeout=timeout)
     except Exception:
-        return [], [], ""
+        return [], [], "", False
     emails, social_urls, visible_text, _ = _parse_html_page_signals(
         raw_html,
         page_url=url,
         allowed_site_domain=allowed_site_domain,
         require_context_for_third_party=require_context_for_third_party,
     )
+    is_adult = has_adult_or_onlyfans_signal(
+        text=visible_text if check_text_adult else "",
+        urls=social_urls,
+        raw_html=raw_html,
+    )
+    return emails, social_urls, visible_text, is_adult
+
+
+def _extract_page_signals(
+    url: str,
+    timeout: int = 5,
+    allowed_site_domain: str = "",
+    require_context_for_third_party: bool = False,
+) -> Tuple[List[str], List[str], str]:
+    emails, social_urls, visible_text, is_adult = _extract_page_signals_checked(
+        url,
+        timeout=timeout,
+        allowed_site_domain=allowed_site_domain,
+        require_context_for_third_party=require_context_for_third_party,
+    )
+    if is_adult:
+        return [], [], ""
     return emails, social_urls, visible_text
 
 
@@ -574,14 +869,21 @@ def _extract_links_and_emails_from_url(url: str, timeout: int = 5) -> Tuple[List
     return emails, social_urls
 
 
-def _crawl_creator_website(website_url: str, need_email: bool = True, need_geo: bool = True) -> Tuple[List[str], List[str], str]:
+def _crawl_creator_website_checked(
+    website_url: str,
+    need_email: bool = True,
+    need_geo: bool = True,
+) -> Tuple[List[str], List[str], str, bool]:
     """
     Crawl creator homepage plus up to 4 verified contact/about/partnership subpages
-    to uncover verified business emails, extra social links, and US/Canada location text.
+    to uncover verified business emails, extra social links, US/Canada location text,
+    and screen for any hidden OnlyFans/adult links.
     """
     norm_home = _normalize_social_url(website_url)
     if not norm_home:
-        return [], [], ""
+        return [], [], "", False
+    if has_adult_or_onlyfans_signal(urls=[norm_home]):
+        return [], [], "", True
     parsed_home = urlparse(norm_home)
     base_root = _root_domain(parsed_home.netloc)
     origin = f"{parsed_home.scheme}://{parsed_home.netloc}"
@@ -590,14 +892,22 @@ def _crawl_creator_website(website_url: str, need_email: bool = True, need_geo: 
     socials: List[str] = []
     geo_chunks: List[str] = []
     visited = set()
+    adult_detected = False
 
     def _absorb(page_url: str, raw_html: str) -> List[str]:
+        nonlocal adult_detected
+        if has_adult_or_onlyfans_signal(raw_html=raw_html):
+            adult_detected = True
+            return []
         pe, ps, pt, pnav = _parse_html_page_signals(
             raw_html,
             page_url=page_url,
             allowed_site_domain=base_root,
             require_context_for_third_party=True,
         )
+        if has_adult_or_onlyfans_signal(urls=ps):
+            adult_detected = True
+            return []
         for em in pe:
             if em not in emails:
                 emails.append(em)
@@ -617,8 +927,11 @@ def _crawl_creator_website(website_url: str, need_email: bool = True, need_geo: 
     except Exception:
         pass
 
+    if adult_detected:
+        return [], [], "", True
+
     if not need_email and geo_chunks and not need_geo:
-        return emails, socials, "\n".join(geo_chunks)[:10000]
+        return emails, socials, "\n".join(geo_chunks)[:10000], False
 
     fallback_paths = ("/contact", "/contact-us", "/about", "/about-us", "/work-with-me", "/partnerships", "/advertise")
     candidates: List[str] = []
@@ -629,6 +942,8 @@ def _crawl_creator_website(website_url: str, need_email: bool = True, need_geo: 
 
     subpages_checked = 0
     for sub_url in candidates:
+        if adult_detected:
+            return [], [], "", True
         if subpages_checked >= 4 or (emails and not need_geo):
             break
         if emails and geo_chunks:
@@ -641,19 +956,77 @@ def _crawl_creator_website(website_url: str, need_email: bool = True, need_geo: 
         except Exception:
             continue
 
-    return emails, socials, "\n".join(geo_chunks)[:10000]
+    if adult_detected:
+        return [], [], "", True
+    return emails, socials, "\n".join(geo_chunks)[:10000], False
 
 
-def _fetch_youtube_recent_video_signals(nav_url: str, site_domain: str = "") -> Tuple[List[str], List[str], str]:
+def _crawl_creator_website(website_url: str, need_email: bool = True, need_geo: bool = True) -> Tuple[List[str], List[str], str]:
+    emails, socials, text, is_adult = _crawl_creator_website_checked(website_url, need_email=need_email, need_geo=need_geo)
+    if is_adult:
+        return [], [], ""
+    return emails, socials, text
+
+
+def _extract_youtube_video_titles_from_html(vhtml: str, max_titles: int = 20) -> List[str]:
+    """Extract recent video titles from a YouTube channel's /videos tab (supports lockupViewModel & videoRenderer)."""
+    if not vhtml:
+        return []
+    m = re.search(r"var ytInitialData = (\{.*?\});</script>", vhtml)
+    if not m:
+        return []
+    try:
+        data = json.loads(m.group(1))
+    except Exception:
+        return []
+
+    titles: List[str] = []
+
+    def walk(obj: Any) -> None:
+        if len(titles) >= max_titles:
+            return
+        if isinstance(obj, dict):
+            lvm = obj.get("lockupViewModel")
+            if isinstance(lvm, dict):
+                t = (((lvm.get("metadata") or {}).get("lockupMetadataViewModel") or {}).get("title") or {}).get("content")
+                if t and isinstance(t, str) and t.strip() and t.strip() not in titles:
+                    titles.append(t.strip())
+            vr = obj.get("videoRenderer") or obj.get("gridVideoRenderer")
+            if isinstance(vr, dict):
+                tobj = vr.get("title") or {}
+                t = (tobj.get("runs") or [{}])[0].get("text") if "runs" in tobj else tobj.get("simpleText")
+                if t and isinstance(t, str) and t.strip() and t.strip() not in titles:
+                    titles.append(t.strip())
+            for v in obj.values():
+                walk(v)
+        elif isinstance(obj, list):
+            for x in obj:
+                walk(x)
+
+    walk(data)
+    return titles[:max_titles]
+
+
+def _fetch_youtube_recent_video_signals(
+    nav_url: str,
+    site_domain: str = "",
+    vhtml_prefetched: Optional[str] = None,
+    fetch_watch_descriptions: bool = True,
+) -> Tuple[List[str], List[str], str]:
     """Check up to 2 recent video descriptions where DIY creators often list business email, PO Box geo & socials."""
     if not nav_url:
         return [], [], ""
     emails: List[str] = []
     social_urls: List[str] = []
     desc_chunks: List[str] = []
-    try:
-        vhtml = _fetch_text(f"https://www.youtube.com{nav_url}/videos", timeout=6)
-    except Exception:
+    vhtml = vhtml_prefetched
+    if vhtml is None:
+        try:
+            vhtml = _fetch_text(f"https://www.youtube.com{nav_url}/videos", timeout=6)
+        except Exception:
+            return [], [], ""
+
+    if not fetch_watch_descriptions:
         return [], [], ""
 
     vid_ids: List[str] = []
@@ -677,6 +1050,8 @@ def _fetch_youtube_recent_video_signals(nav_url: str, site_domain: str = "") -> 
             desc = ""
         if not desc:
             continue
+        if has_adult_or_onlyfans_signal(text=desc):
+            return [], ["https://onlyfans.com/__blocked__"], ""
         desc_chunks.append(desc[:2500])
         for em in _extract_clean_emails(desc, allowed_site_domain=site_domain, require_context_for_third_party=True):
             if em not in emails:
@@ -692,6 +1067,8 @@ def _fetch_youtube_recent_video_signals(nav_url: str, site_domain: str = "") -> 
 
 def _fetch_youtube_creator_profile(seed: Dict[str, str]) -> Optional[Dict[str, Any]]:
     nav_url = seed["nav_url"]
+    if _is_excluded_creator(seed.get("name", ""), nav_url):
+        return None
     about_url = f"https://www.youtube.com{nav_url}/about"
     try:
         raw_about_html = _fetch_text(about_url, timeout=9)
@@ -728,14 +1105,18 @@ def _fetch_youtube_creator_profile(seed: Dict[str, str]) -> Optional[Dict[str, A
 
     sub_text = (about.get("subscriberCountText") or "").strip()
     sub_count = _parse_subscriber_count(sub_text)
-    if 0 < sub_count < 1000:
+    if sub_count < 1000:
         return None
 
     desc = (about.get("description") or "").strip()
-    # Skip clearly non-Latin scripts in bio/title
-    if re.search(r"[\u0900-\u097f\u0600-\u06ff\u0400-\u04ff]", f"{seed['name']} {desc}"):
+    # Skip clearly non-Latin scripts in bio/title (Arabic, Cyrillic, Devanagari, Hebrew, Thai, CJK, Hangul)
+    if re.search(
+        r"[\u0400-\u04ff\u0590-\u05ff\u0600-\u06ff\u0900-\u097f\u0e00-\u0e7f\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]",
+        f"{seed['name']} {desc}",
+    ):
         return None
 
+    all_external_urls: List[str] = []
     _SPONSOR_LINK_TITLE_RE = re.compile(
         r"(%\s*off|use code|promo code|discount|coupon|sponsor|affiliate)",
         re.IGNORECASE,
@@ -747,20 +1128,52 @@ def _fetch_youtube_creator_profile(seed: Dict[str, str]) -> Optional[Dict[str, A
         title_val = (vm.get("title") or {}).get("content", "")
         if not url_val:
             continue
+        all_external_urls.append(url_val)
+        if has_adult_or_onlyfans_signal(text=title_val, urls=[url_val]):
+            return None
         if _SPONSOR_LINK_TITLE_RE.search(title_val) and not _SOCIAL_URL_SCAN_RE.match(url_val):
             continue
         raw_links.append(url_val)
+
+    desc_urls = re.findall(r"https?://[^\s)<\]\"']+", desc, re.IGNORECASE)
+    all_external_urls.extend(desc_urls)
+    if has_adult_or_onlyfans_signal(text=f"{seed['name']} {nav_url} {desc}", urls=all_external_urls):
+        return None
+
     raw_links.extend(_SOCIAL_URL_SCAN_RE.findall(desc))
     socials = _classify_creator_links([u for u in raw_links if u])
     site_domain = _root_domain(socials["website"]) if socials.get("website") else ""
+
+    # DOUBLE-CHECK STEP: Fetch recent channel /videos titles to verify this channel is
+    # genuinely a DIY / Handyman / Home-Services influencer (not a random channel with 1 keyword hit).
+    try:
+        vhtml = _fetch_text(f"https://www.youtube.com{nav_url}/videos", timeout=7)
+    except Exception:
+        return None
+    recent_titles = _extract_youtube_video_titles_from_html(vhtml, max_titles=20)
+    handle = nav_url.lstrip("/")
+    if not is_verified_diy_creator(
+        name=seed["name"],
+        handle=handle,
+        bio=desc,
+        platform="youtube",
+        website=socials.get("website", ""),
+        social_urls=all_external_urls,
+        recent_content_items=recent_titles,
+        followers_count=sub_count,
+    ):
+        return None
+
     emails = _extract_clean_emails(desc, allowed_site_domain=site_domain, require_context_for_third_party=False)
     extra_geo_chunks: List[str] = []
 
-    # 1. Hop to Linktree / Beacons / Stan.store / Hoo.be / Campsite hubs
+    # 1. Hop to Linktree / Beacons / Stan.store / Hoo.be / Campsite hubs (with strict OnlyFans/adult screening)
     for hub_url in socials["link_hubs"][:2]:
-        hub_emails, hub_socials, hub_text = _extract_page_signals(
+        hub_emails, hub_socials, hub_text, hub_adult = _extract_page_signals_checked(
             hub_url, timeout=5, allowed_site_domain=site_domain, require_context_for_third_party=False
         )
+        if hub_adult:
+            return None
         if hub_text:
             extra_geo_chunks.append(hub_text)
         for em in hub_emails:
@@ -768,9 +1181,13 @@ def _fetch_youtube_creator_profile(seed: Dict[str, str]) -> Optional[Dict[str, A
                 emails.append(em)
         _merge_socials_into(socials, hub_socials)
 
-    # 2. Check recent YouTube video descriptions when email or social coverage is still thin
+    # 2. Check recent YouTube video descriptions (reusing already-fetched vhtml)
     if not emails or not socials.get("website") or not socials.get("pinterest_url"):
-        vid_emails, vid_socials, vid_text = _fetch_youtube_recent_video_signals(nav_url, site_domain=site_domain)
+        vid_emails, vid_socials, vid_text = _fetch_youtube_recent_video_signals(
+            nav_url, site_domain=site_domain, vhtml_prefetched=vhtml
+        )
+        if has_adult_or_onlyfans_signal(text=vid_text, urls=vid_socials):
+            return None
         if vid_text:
             extra_geo_chunks.append(vid_text)
         for em in vid_emails:
@@ -780,13 +1197,15 @@ def _fetch_youtube_creator_profile(seed: Dict[str, str]) -> Optional[Dict[str, A
         if not site_domain and socials.get("website"):
             site_domain = _root_domain(socials["website"])
 
-    # 3. Deep crawl personal website (/ + contact/about/work-with-me/partnerships)
+    # 3. Deep crawl personal website (/ + contact/about/work-with-me/partnerships) with adult screening
     if socials["website"] and (not emails or country in ("", "United States", "Canada")):
-        site_emails, site_socials, site_text = _crawl_creator_website(
+        site_emails, site_socials, site_text, site_adult = _crawl_creator_website_checked(
             socials["website"],
             need_email=not bool(emails),
             need_geo=country in ("", "United States", "Canada"),
         )
+        if site_adult:
+            return None
         if site_text:
             extra_geo_chunks.append(site_text)
         for em in site_emails:
@@ -794,7 +1213,20 @@ def _fetch_youtube_creator_profile(seed: Dict[str, str]) -> Optional[Dict[str, A
                 emails.append(em)
         _merge_socials_into(socials, site_socials)
 
-    handle = nav_url.lstrip("/")
+    final_social_urls = [socials.get(k, "") for k in _ALL_SOCIAL_FIELDS if socials.get(k)]
+    final_website = socials["website"] or (socials["link_hubs"][0] if socials["link_hubs"] else "")
+    if not is_verified_diy_creator(
+        name=seed["name"],
+        handle=handle,
+        bio=desc,
+        platform="youtube",
+        website=final_website,
+        social_urls=final_social_urls,
+        recent_content_items=recent_titles,
+        followers_count=sub_count,
+    ):
+        return None
+
     slug_id = re.sub(r"[^A-Za-z0-9_-]", "_", handle)
     canonical_yt = f"https://www.youtube.com{nav_url}"
 
@@ -806,13 +1238,14 @@ def _fetch_youtube_creator_profile(seed: Dict[str, str]) -> Optional[Dict[str, A
         "profile_url": canonical_yt,
         "country": country,
         "_extra_geo_text": "\n".join(extra_geo_chunks)[:12000],
+        "_recent_items": recent_titles[:15],
         "audience_count": sub_count,
         "audience_text": sub_text or (f"{sub_count:,} subscribers" if sub_count else ""),
         "default_category": seed["default_category"],
         "seed_topic": seed["seed_topic"],
         "bio": re.sub(r"\s+", " ", desc)[:600],
         "business_email": ", ".join(emails[:2]),
-        "website": socials["website"] or (socials["link_hubs"][0] if socials["link_hubs"] else ""),
+        "website": final_website,
         "youtube_url": canonical_yt,
         "instagram_url": socials["instagram_url"],
         "tiktok_url": socials["tiktok_url"],
@@ -827,22 +1260,20 @@ def _fetch_youtube_creator_profile(seed: Dict[str, str]) -> Optional[Dict[str, A
     }
 
 
-_DIY_RELEVANCE_RE = re.compile(
-    r"\b(diy|handyman|handyperson|plumb\w*|electric\w*|carpentr\w*|woodwork\w*|renovat\w*|remodel\w*|drywall|paint\w*|landscap\w*|roof\w*|tile|tiling|flooring|home repair|home improvement|house clean\w*|window clean\w*|carpet clean\w*|auto detail\w*|snow removal|maker)\b",
-    re.IGNORECASE,
-)
-
-
 def _fetch_bluesky_creator(actor: Dict[str, Any], default_category: str, seed_topic: str) -> Optional[Dict[str, Any]]:
     handle = (actor.get("handle") or "").strip()
     name = (actor.get("displayName") or handle).strip()
     bio = (actor.get("description") or "").strip()
-    if not handle or _is_excluded_creator(name, handle):
+    actor_labels = list(actor.get("labels") or [])
+    if not handle or handle.endswith(".invalid") or _is_excluded_creator(name, handle):
         return None
-    if not _DIY_RELEVANCE_RE.search(f"{name} {bio}"):
+    raw_urls = re.findall(r"https?://[^\s)<\]\"']+", bio, re.IGNORECASE)
+    if has_adult_or_onlyfans_signal(text=f"{name} {handle} {bio}", urls=raw_urls, bsky_labels=actor_labels):
+        return None
+    if not _UNAMBIGUOUS_HOME_TRADE_RE.search(f"{name} {bio}"):
         return None
 
-    # Fetch public profile metadata to get exact followersCount
+    # Fetch public profile metadata (followersCount + moderation labels)
     followers = 0
     try:
         prof_raw = _fetch_text(
@@ -851,17 +1282,54 @@ def _fetch_bluesky_creator(actor: Dict[str, Any], default_category: str, seed_to
         )
         prof = json.loads(prof_raw)
         followers = int(prof.get("followersCount") or 0)
+        actor_labels.extend(prof.get("labels") or [])
     except Exception:
-        pass
-    if 0 < followers < 250:
+        return None
+    if followers < 300:
+        return None
+    if has_adult_or_onlyfans_signal(bsky_labels=actor_labels):
+        return None
+
+    # Fetch author feed to double-check that their actual Bluesky posts are about Home DIY / Trades
+    feed_texts: List[str] = []
+    feed_urls: List[str] = []
+    try:
+        feed_raw = _fetch_text(
+            f"https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor={urllib.parse.quote(handle)}&limit=18",
+            timeout=5,
+        )
+        feed_data = json.loads(feed_raw)
+        for item in (feed_data.get("feed") or []):
+            post_obj = item.get("post") or {}
+            actor_labels.extend(post_obj.get("labels") or [])
+            rec = post_obj.get("record") or {}
+            txt = (rec.get("text") or "").strip()
+            if txt:
+                feed_texts.append(txt)
+                feed_urls.extend(re.findall(r"https?://[^\s)<\]\"']+", txt, re.IGNORECASE))
+    except Exception:
+        return None
+
+    socials = _classify_creator_links(raw_urls)
+    if not is_verified_diy_creator(
+        name=name,
+        handle=handle,
+        bio=bio,
+        platform="bluesky",
+        website=socials.get("website", ""),
+        social_urls=[*raw_urls, *feed_urls],
+        recent_content_items=feed_texts,
+        followers_count=followers,
+        bsky_labels=actor_labels,
+    ):
         return None
 
     emails = _extract_clean_emails(bio)
-    raw_urls = re.findall(r"https?://[^\s)<\]\"']+", bio, re.IGNORECASE)
-    socials = _classify_creator_links(raw_urls)
     extra_geo_chunks: List[str] = []
     for hub_url in socials["link_hubs"][:2]:
-        he, hs, ht = _extract_page_signals(hub_url, timeout=4)
+        he, hs, ht, hub_adult = _extract_page_signals_checked(hub_url, timeout=4)
+        if hub_adult:
+            return None
         if ht:
             extra_geo_chunks.append(ht)
         for em in he:
@@ -869,13 +1337,30 @@ def _fetch_bluesky_creator(actor: Dict[str, Any], default_category: str, seed_to
                 emails.append(em)
         _merge_socials_into(socials, hs)
     if socials["website"] and not emails:
-        se, ss, st = _crawl_creator_website(socials["website"], need_email=True, need_geo=True)
+        se, ss, st, site_adult = _crawl_creator_website_checked(socials["website"], need_email=True, need_geo=True)
+        if site_adult:
+            return None
         if st:
             extra_geo_chunks.append(st)
         for em in se:
             if em not in emails:
                 emails.append(em)
         _merge_socials_into(socials, ss)
+
+    final_website = socials["website"] or (socials["link_hubs"][0] if socials["link_hubs"] else "")
+    final_social_urls = [socials.get(k, "") for k in _ALL_SOCIAL_FIELDS if socials.get(k)]
+    if not is_verified_diy_creator(
+        name=name,
+        handle=handle,
+        bio=bio,
+        platform="bluesky",
+        website=final_website,
+        social_urls=final_social_urls,
+        recent_content_items=feed_texts,
+        followers_count=followers,
+        bsky_labels=actor_labels,
+    ):
+        return None
 
     bsky_url = f"https://bsky.app/profile/{handle}"
     slug_id = re.sub(r"[^A-Za-z0-9_.-]", "_", handle)
@@ -887,13 +1372,14 @@ def _fetch_bluesky_creator(actor: Dict[str, Any], default_category: str, seed_to
         "profile_url": bsky_url,
         "country": "",
         "_extra_geo_text": "\n".join(extra_geo_chunks)[:8000],
+        "_recent_items": feed_texts[:15],
         "audience_count": followers,
         "audience_text": f"{followers:,} followers" if followers else "Bluesky Creator",
         "default_category": default_category,
         "seed_topic": seed_topic,
         "bio": re.sub(r"\s+", " ", bio)[:600],
         "business_email": ", ".join(emails[:2]),
-        "website": socials["website"] or (socials["link_hubs"][0] if socials["link_hubs"] else ""),
+        "website": final_website,
         "youtube_url": "",
         "instagram_url": socials["instagram_url"],
         "tiktok_url": socials["tiktok_url"],
@@ -930,7 +1416,10 @@ def enrich_creator_profile_deep(creator: Dict[str, Any]) -> Dict[str, Any]:
     need_geo = country in ("", "United States", "Canada") and not (updated.get("city") and updated.get("province_state"))
 
     for hub_url in list(socials["link_hubs"])[:2]:
-        he, hs, ht = _extract_page_signals(hub_url, timeout=5, allowed_site_domain=site_domain)
+        he, hs, ht, hub_adult = _extract_page_signals_checked(hub_url, timeout=5, allowed_site_domain=site_domain)
+        if hub_adult:
+            updated["_adult_rejected"] = True
+            return updated
         if ht:
             extra_geo_chunks.append(ht)
         for em in he:
@@ -942,7 +1431,10 @@ def enrich_creator_profile_deep(creator: Dict[str, Any]) -> Dict[str, Any]:
             site_domain = _root_domain(site)
 
     if site and not any(h in site.lower() for h in _LINK_HUB_HOSTS):
-        se, ss, st = _crawl_creator_website(site, need_email=not bool(emails), need_geo=need_geo)
+        se, ss, st, site_adult = _crawl_creator_website_checked(site, need_email=not bool(emails), need_geo=need_geo)
+        if site_adult:
+            updated["_adult_rejected"] = True
+            return updated
         if st:
             extra_geo_chunks.append(st)
         for em in se:
@@ -954,6 +1446,9 @@ def enrich_creator_profile_deep(creator: Dict[str, Any]) -> Dict[str, Any]:
     if yt_url and (not emails or not updated.get("pinterest_url") or need_geo):
         nav_url = urlparse(yt_url).path
         ve, vs, vt = _fetch_youtube_recent_video_signals(nav_url, site_domain=site_domain)
+        if has_adult_or_onlyfans_signal(text=vt, urls=vs):
+            updated["_adult_rejected"] = True
+            return updated
         if vt:
             extra_geo_chunks.append(vt)
         for em in ve:
@@ -976,17 +1471,21 @@ def _scrape_bluesky_diy_creators(existing_ids: Optional[set] = None) -> List[Dic
     candidates: Dict[str, Tuple[Dict[str, Any], str, str]] = {}
     for query, default_cat in BLUESKY_SEARCH_SEEDS:
         try:
-            url = f"https://public.api.bsky.app/xrpc/app.bsky.actor.searchActors?q={urllib.parse.quote(query)}&limit=15"
+            url = f"https://public.api.bsky.app/xrpc/app.bsky.actor.searchActors?q={urllib.parse.quote(query)}&limit=18"
             raw = _fetch_text(url, timeout=6)
             actors = json.loads(raw).get("actors") or []
             for a in actors:
                 h = (a.get("handle") or "").strip()
-                if not h:
+                if not h or h.endswith(".invalid"):
                     continue
                 cid = f"bsky_{re.sub(r'[^A-Za-z0-9_.-]', '_', h)}"
                 if existing_ids and cid in existing_ids:
                     continue
-                if h not in candidates and _DIY_RELEVANCE_RE.search(f"{a.get('displayName', '')} {a.get('description', '')}"):
+                disp = a.get("displayName", "")
+                desc = a.get("description", "")
+                if has_adult_or_onlyfans_signal(text=f"{disp} {h} {desc}", bsky_labels=a.get("labels") or []):
+                    continue
+                if h not in candidates and _UNAMBIGUOUS_HOME_TRADE_RE.search(f"{disp} {desc}"):
                     candidates[h] = (a, default_cat, query)
         except Exception:
             continue
@@ -995,7 +1494,7 @@ def _scrape_bluesky_diy_creators(existing_ids: Optional[set] = None) -> List[Dic
     if not candidates:
         return results
     with ThreadPoolExecutor(max_workers=6) as ex:
-        futs = [ex.submit(_fetch_bluesky_creator, a, cat, q) for a, cat, q in list(candidates.values())[:20]]
+        futs = [ex.submit(_fetch_bluesky_creator, a, cat, q) for a, cat, q in list(candidates.values())[:25]]
         for fut in as_completed(futs):
             try:
                 item = fut.result()

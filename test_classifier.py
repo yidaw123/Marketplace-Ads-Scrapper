@@ -16,6 +16,8 @@ from scrapers.creators_scraper import (
     _decode_cfemail,
     _extract_clean_emails,
     _parse_html_page_signals,
+    has_adult_or_onlyfans_signal,
+    is_verified_diy_creator,
 )
 
 
@@ -315,6 +317,135 @@ class CreatorClassificationTests(unittest.TestCase):
         )
         self.assertEqual(c3["intent_type"], "service_provider_ad")
         self.assertEqual(c3["primary_category"], "Auto, Detailing & BBQ Service")
+
+    def test_onlyfans_and_nsfw_candidates_blocked_everywhere(self):
+        self.assertTrue(
+            has_adult_or_onlyfans_signal(
+                text="Video Games; Cycling; DIY; Sharing my nudes onlyfans.com/hungandhandy"
+            )
+        )
+        self.assertTrue(
+            has_adult_or_onlyfans_signal(
+                raw_html='<a href="https://onlyfans.com/secretcreator">Exclusive VIP</a>'
+            )
+        )
+        self.assertTrue(
+            has_adult_or_onlyfans_signal(
+                bsky_labels=[{"val": "porn"}]
+            )
+        )
+        self.assertFalse(
+            is_verified_diy_creator(
+                name="Andy",
+                handle="@hungandhandy.bsky.social",
+                bio="Video Games; Cycling; DIY; Photography. onlyfans.com/hungandhandy",
+                platform="bluesky",
+                recent_content_items=["DIY shelf", "Drywall patch", "Cabinet build", "Deck repair", "Plumbing fix"],
+                followers_count=5000,
+            )
+        )
+        self.assertFalse(
+            is_verified_diy_creator(
+                name="Calm",
+                handle="@calmdraws.bsky.social",
+                bio="🔞Erotic illustrator. I like painting people.",
+                platform="bluesky",
+                recent_content_items=["Painting piece 1"] * 6,
+                followers_count=12000,
+            )
+        )
+
+    def test_non_diy_keyword_false_positives_and_brands_rejected(self):
+        # Digital/comic artist with "painting"
+        self.assertFalse(
+            is_verified_diy_creator(
+                name="Silverjow",
+                handle="@silverjow.bsky.social",
+                bio="Creating comic art, illustrations and painting.",
+                platform="bluesky",
+                recent_content_items=["New character painting"] * 6,
+                followers_count=8000,
+            )
+        )
+        # Author with "maker" / "shelves" or novel titled "Woodworking"
+        self.assertFalse(
+            is_verified_diy_creator(
+                name="Chasten Buttigieg",
+                handle="@chastenbuttigieg.bsky.social",
+                bio="Dad, author, teacher, macaroni and cheese maker. Book on shelves now!",
+                platform="bluesky",
+                recent_content_items=["Book tour stop"] * 6,
+                followers_count=90000,
+            )
+        )
+        # Beauty vlogger who had 1 DIY room video
+        self.assertFalse(
+            is_verified_diy_creator(
+                name="Lainey Ostrom",
+                handle="@LaineyMarieBeauty",
+                bio="Beauty and lifestyle videos! New videos every Sunday!",
+                platform="youtube",
+                recent_content_items=[
+                    "Sephora Makeup Haul",
+                    "Everyday Skincare Routine",
+                    "DIY Bedroom Decor",
+                    "What I Eat In A Day",
+                    "Summer Outfit Ideas",
+                ],
+                followers_count=45000,
+            )
+        )
+        # Corporate manufacturer / retailer rejected
+        self.assertFalse(
+            is_verified_diy_creator(
+                name="Delta Faucet",
+                handle="@deltafaucet",
+                bio="Welcome to the official Delta® Faucet YouTube channel!",
+                platform="youtube",
+                recent_content_items=["How to Install a Kitchen Faucet"] * 8,
+                followers_count=50000,
+            )
+        )
+        # Bare email never misclassified as website URL
+        self.assertEqual(_classify_creator_links(["mancyclediy@gmail.com"])["website"], "")
+
+    def test_real_diy_and_handyman_influencers_verified(self):
+        self.assertTrue(
+            is_verified_diy_creator(
+                name="Home RenoVision DIY",
+                handle="@HomeRenoVisionDIY",
+                bio="Empowering homeowners to renovate, patch drywall, tile bathrooms, and save money.",
+                platform="youtube",
+                website="https://homerenovisiondiy.com",
+                recent_content_items=[
+                    "How to Tape and Mud Drywall Like a Pro",
+                    "Bathroom Tile Shower Waterproofing",
+                    "Install Laminate Flooring Step by Step",
+                    "Basement Framing Mistakes to Avoid",
+                    "How to Paint a Room Fast",
+                ],
+                followers_count=3500000,
+            )
+        )
+        # Blank /about bio still passes when trade handle + overwhelming trade videos confirm niche
+        self.assertTrue(
+            is_verified_diy_creator(
+                name="Vancouver Carpenter",
+                handle="@vancouvercarpenter",
+                bio="",
+                platform="youtube",
+                recent_content_items=[
+                    "When Drywall meets Finish Carpentry",
+                    "How to Install Exterior Window Trim",
+                    "Skim Coating Walls for Beginners",
+                    "Baseboard Miter Cuts on Uneven Walls",
+                    "Plaster Repair Tips",
+                    "Hanging Interior Doors",
+                    "A Week in the Life of a Carpenter",
+                ],
+                followers_count=650000,
+            )
+        )
 
 
 if __name__ == "__main__":
