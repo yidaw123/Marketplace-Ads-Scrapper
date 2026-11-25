@@ -14,6 +14,8 @@ USER_AGENT = (
 
 BARK_CATEGORIES: List[Tuple[str, str, str]] = [
     ("handyman", "Handyman", "General Handyman & Odd Jobs"),
+    ("cleaners", "House & Commercial Cleaning", "Cleaning & Home Care"),
+    ("window-cleaners", "Window Cleaning", "Cleaning & Home Care"),
     ("plumbers", "Plumbing & Drainage", "Plumbing & Drain"),
     ("electricians", "Electricians", "Electrical & Lighting"),
     ("gardening-landscaping", "Gardening & Landscaping", "Yardwork & Landscaping"),

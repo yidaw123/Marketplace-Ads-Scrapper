@@ -42,11 +42,13 @@ SERVICE_CATEGORIES: Dict[str, Dict[str, Any]] = {
             ("stump", 4), ("branches", 3), ("hedge", 4), ("sprinkler", 4), ("irrigation", 5),
             ("sod", 4), ("patio", 3), ("paver", 4), ("retaining wall", 4), ("overgrown", 4),
             ("leaf removal", 5), ("leaves", 3), ("brush clearing", 5), ("digging", 3),
-            ("snow removal", 5), ("shoveling", 4), ("grading", 3), ("drainage", 3),
+            ("snow removal", 5), ("snow plowing", 5), ("driveway shoveling", 5), ("shoveling", 4),
+            ("salting", 4), ("de-icing", 4), ("driveway sealing", 5), ("artificial turf", 5),
+            ("pool service", 5), ("pool cleaning", 5), ("grading", 3), ("drainage", 3),
             ("soil", 3), ("compost", 3),
         ],
         "default_difficulty": "easy",
-        "ad_hook": "Weekend too short for yardwork? Book local yardwork, gardening & landscaping help on-demand.",
+        "ad_hook": "Lawn care, landscaping, or snow removal? Book a local Hustler on HustleOn.ca and pay once complete.",
     },
     "Painting & Drywall": {
         "keywords": [
@@ -135,19 +137,55 @@ SERVICE_CATEGORIES: Dict[str, Dict[str, Any]] = {
             ("handyman", 5), ("handy man", 5), ("odd jobs", 5), ("punch list", 5),
             ("honey do", 5), ("home repair", 4), ("maintenance", 3),
             ("short-term rental", 4), ("airbnb", 4), ("move out repair", 5),
-            ("property maintenance", 4), ("junk removal", 4), ("hauling", 4),
-            ("moving help", 4), ("heavy lifting", 4), ("demolition", 4),
+            ("property maintenance", 4), ("demolition", 4),
             ("fix", 1), ("repair", 1),
         ],
         "default_difficulty": "moderate",
-        "ad_hook": "Got a punch list of home repairs? Book one versatile, vetted handyman to knock it all out.",
+        "ad_hook": "Got a punch list of home repairs? Hire a local Hustler on HustleOn.ca and pay once complete.",
+    },
+    "Cleaning & Home Care": {
+        "keywords": [
+            ("house cleaning", 6), ("home cleaning", 6), ("cleaning service", 6),
+            ("cleaning services", 6), ("deep clean", 5), ("deep cleaning", 6),
+            ("house cleaner", 6), ("cleaner", 4), ("cleaners", 4), ("maid", 5),
+            ("maid service", 6), ("move out clean", 6), ("move-out clean", 6),
+            ("move in clean", 5), ("airbnb cleaning", 6), ("office cleaning", 5),
+            ("carpet cleaning", 6), ("steam clean", 5), ("upholstery cleaning", 6),
+            ("window washing", 6), ("window cleaning", 6), ("window cleaner", 6),
+            ("duct cleaning", 6), ("air duct cleaning", 6), ("post construction clean", 6),
+        ],
+        "default_difficulty": "easy",
+        "ad_hook": "Need house cleaning, carpet cleaning, or window washing? Book a local Hustler on HustleOn.ca—pay once complete.",
+    },
+    "Moving, Hauling & Junk Removal": {
+        "keywords": [
+            ("junk removal", 6), ("rubbish removal", 6), ("trash removal", 5),
+            ("trash hauling", 6), ("haul away", 5), ("hauling", 5), ("dump run", 6),
+            ("furniture disposal", 6), ("debris removal", 5), ("moving help", 6),
+            ("moving service", 6), ("movers", 5), ("local mover", 6),
+            ("heavy lifting", 5), ("loading unloading", 5), ("furniture delivery", 6),
+            ("couch delivery", 5), ("pickup truck delivery", 6), ("errand service", 5),
+        ],
+        "default_difficulty": "easy",
+        "ad_hook": "Need moving muscle, delivery, or junk hauled away? Get quotes from local Hustlers on HustleOn.ca.",
+    },
+    "Auto, Detailing & BBQ Service": {
+        "keywords": [
+            ("auto detailing", 6), ("car detailing", 6), ("mobile detailing", 6),
+            ("interior detailing", 5), ("car wash", 5), ("auto wash", 5),
+            ("ceramic coating", 5), ("paint correction", 5), ("seasonal tire", 6),
+            ("tire change", 6), ("winter tires", 5), ("tire swap", 6),
+            ("bbq cleaning", 6), ("grill cleaning", 6), ("barbecue cleaning", 6),
+        ],
+        "default_difficulty": "easy",
+        "ad_hook": "Mobile auto detailing, seasonal tire swap, or BBQ cleaning at your driveway via HustleOn.ca.",
     },
 }
 
 CUSTOMER_HIRING_PATTERNS = [
-    r"\b(looking for|searching for|need|seeking|hire|hiring)\b.{0,35}\b(handyman|plumber|electrician|carpenter|painter|contractor|someone|help|pro|gardener|landscaper)\b",
-    r"\b(handyman|plumber|electrician|carpenter|contractor|landscaper)\b.{0,20}\b(needed|wanted|recs|recommendations|recommendation|referral|referrals)\b",
-    r"\b(recommend|recs for|anyone know a|who do you use for)\b.{0,35}\b(handyman|plumber|electrician|repair|painter|yard|landscaper|contractor)\b",
+    r"\b(looking for|searching for|need|seeking|hire|hiring)\b.{0,35}\b(handyman|plumber|electrician|carpenter|painter|contractor|cleaner|house cleaner|mover|movers|someone|help|pro|gardener|landscaper|detailer)\b",
+    r"\b(handyman|plumber|electrician|carpenter|contractor|landscaper|cleaner|movers|junk removal|snow removal|window cleaner)\b.{0,20}\b(needed|wanted|recs|recommendations|recommendation|referral|referrals)\b",
+    r"\b(recommend|recs for|anyone know a|who do you use for)\b.{0,35}\b(handyman|plumber|electrician|repair|painter|yard|landscaper|contractor|cleaner|cleaning|mover|movers|junk removal|detailing)\b",
     r"\b(quote check|is this quote fair|quoted me|how much to pay|fair price for)\b",
     r"\b(need someone to|pay someone to|looking to hire)\b",
     r"\bon-call handyman\b",
@@ -288,7 +326,23 @@ SUB_SERVICES: Dict[str, List[Tuple[str, List[str]]]] = {
     "General Handyman & Odd Jobs": [
         ("Punch List & Multi-Task Repairs", ["punch list", "honey do", "odd jobs", "home repair", "handyman", "handy man"]),
         ("Rental Turnover & Maintenance", ["move out repair", "airbnb", "short-term rental", "property maintenance", "maintenance"]),
-        ("Moving, Hauling & Demolition", ["junk removal", "hauling", "moving help", "heavy lifting", "demolition"]),
+        ("Light Demolition & Prep", ["demolition", "tear out"]),
+    ],
+    "Cleaning & Home Care": [
+        ("House & Deep Cleaning", ["house cleaning", "home cleaning", "deep clean", "deep cleaning", "maid", "cleaner", "cleaners", "cleaning service", "move out clean", "move-out clean", "airbnb cleaning", "office cleaning"]),
+        ("Carpet & Upholstery Cleaning", ["carpet cleaning", "steam clean", "upholstery cleaning", "rug cleaning"]),
+        ("Window Washing", ["window washing", "window cleaning", "window cleaner"]),
+        ("Duct & Vent Cleaning", ["duct cleaning", "air duct cleaning"]),
+    ],
+    "Moving, Hauling & Junk Removal": [
+        ("Junk & Rubbish Removal", ["junk removal", "rubbish removal", "trash removal", "trash hauling", "haul away", "hauling", "dump run", "furniture disposal", "debris removal"]),
+        ("Moving & Heavy Lifting", ["moving help", "moving service", "movers", "local mover", "heavy lifting", "loading unloading"]),
+        ("Furniture & Local Delivery", ["furniture delivery", "couch delivery", "pickup truck delivery", "errand service"]),
+    ],
+    "Auto, Detailing & BBQ Service": [
+        ("Mobile Auto Wash & Detailing", ["auto detailing", "car detailing", "mobile detailing", "interior detailing", "car wash", "auto wash", "ceramic coating", "paint correction"]),
+        ("Seasonal Tire Change", ["seasonal tire", "tire change", "winter tires", "tire swap"]),
+        ("BBQ & Grill Cleaning", ["bbq cleaning", "grill cleaning", "barbecue cleaning"]),
     ],
 }
 

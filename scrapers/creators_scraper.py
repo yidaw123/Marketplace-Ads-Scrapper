@@ -49,7 +49,13 @@ CREATOR_SEARCH_SEEDS: List[Tuple[str, str]] = [
     ("diy homeowner garage workshop tour", "General Handyman & Odd Jobs"),
     ("pinterest diy home makeover budget renovation", "General Handyman & Odd Jobs"),
     ("canadian home renovation diy channel", "General Handyman & Odd Jobs"),
+    ("toronto home improvement diy renovation", "General Handyman & Odd Jobs"),
     ("kitchen cabinet makeover budget diy", "Painting & Drywall"),
+    ("house cleaning tips deep clean creator", "Cleaning & Home Care"),
+    ("window cleaning carpet cleaning tips pro", "Cleaning & Home Care"),
+    ("declutter junk removal moving packing tips", "Moving, Hauling & Junk Removal"),
+    ("mobile auto detailing car wash tips", "Auto, Detailing & BBQ Service"),
+    ("snow removal lawn care business canada", "Yardwork & Landscaping"),
 ]
 
 BLUESKY_SEARCH_SEEDS: List[Tuple[str, str]] = [
@@ -822,7 +828,7 @@ def _fetch_youtube_creator_profile(seed: Dict[str, str]) -> Optional[Dict[str, A
 
 
 _DIY_RELEVANCE_RE = re.compile(
-    r"\b(diy|handyman|handyperson|plumb\w*|electric\w*|carpentr\w*|woodwork\w*|renovat\w*|remodel\w*|drywall|paint\w*|landscap\w*|roof\w*|tile|tiling|flooring|home repair|home improvement|maker)\b",
+    r"\b(diy|handyman|handyperson|plumb\w*|electric\w*|carpentr\w*|woodwork\w*|renovat\w*|remodel\w*|drywall|paint\w*|landscap\w*|roof\w*|tile|tiling|flooring|home repair|home improvement|house clean\w*|window clean\w*|carpet clean\w*|auto detail\w*|snow removal|maker)\b",
     re.IGNORECASE,
 )
 

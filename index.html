@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Handyman Market Research & Lead Explorer</title>
+  <title>HustleOn Market &amp; Partner Lead Explorer</title>
   <link rel="stylesheet" href="./static/styles.css?v=25" />
 </head>
 <body>
@@ -11,11 +11,12 @@
     <!-- Top Header -->
     <header class="topbar">
       <div class="brand">
-        <h1>Handyman Market Research</h1>
-        <p>Market intelligence across Kijiji, Reddit, Craigslist, 51.ca, Bark.com &amp; DIY Affiliate Creators</p>
+        <h1>HustleOn Market &amp; Partner Intelligence</h1>
+        <p>Homeowner demand, Hustler pro recruitment &amp; affiliate creator leads for <a href="https://www.hustleon.ca/" target="_blank" rel="noopener noreferrer" style="color:#60a5fa;text-decoration:none;font-weight:600;">HustleOn.ca</a> (GTA, Ontario &amp; expansion markets)</p>
       </div>
       <div class="actions">
         <button id="scrape-btn" onclick="triggerScrape()">Run Live Scrape</button>
+        <button class="secondary" onclick="openEmailTemplateModal()">Outreach Templates</button>
         <button class="secondary" onclick="triggerReclassify()">Reclassify</button>
         <button class="secondary" onclick="openSettingsModal()">Settings</button>
         <button class="secondary" id="export-btn" onclick="handleExportCsv(event)">Export CSV</button>
@@ -58,7 +59,7 @@
       <div class="kpi-card" id="kpi-card-service_provider_ad" onclick="quickSelectIntent('service_provider_ad')">
         <div class="kpi-label">Provider Ads</div>
         <div class="kpi-val" id="kpi-supply" style="color:#c084fc">0</div>
-        <div class="kpi-sub">Handymen offering services</div>
+        <div class="kpi-sub">Hustler recruitment leads</div>
       </div>
       <div class="kpi-card" id="kpi-card-job_posting" onclick="quickSelectIntent('job_posting')">
         <div class="kpi-label">Job Postings</div>
@@ -674,27 +675,32 @@
     </div>
   </div>
 
-  <!-- Affiliate Outreach Email Template Modal -->
+  <!-- HustleOn Outreach Email Template Modal -->
   <div class="modal-backdrop" id="email-template-modal">
-    <div class="modal" style="max-width:720px;">
-      <div class="card-header" style="padding:0 0 14px 0;margin-bottom:16px;">
+    <div class="modal" style="max-width:740px;">
+      <div class="card-header" style="padding:0 0 14px 0;margin-bottom:12px;">
         <div>
-          <h2 id="email-modal-title">Affiliate Outreach Email Template</h2>
-          <div id="email-modal-recipient" style="font-size:0.77rem;color:var(--muted);margin-top:3px;">Customize once &amp; save to draft personalized affiliate emails in one click</div>
+          <h2 id="email-modal-title">HustleOn Outreach Email Templates</h2>
+          <div id="email-modal-recipient" style="font-size:0.77rem;color:var(--muted);margin-top:3px;">Tailored for HustleOn.ca — switch between Creator Affiliate, Hustler Pro Recruitment, and Customer replies</div>
         </div>
         <button class="secondary" onclick="closeEmailTemplateModal()">Close</button>
       </div>
+      <div class="quick-pill-strip" id="tpl-preset-strip" style="margin-bottom:14px;">
+        <button type="button" class="quick-pill active" data-preset="creator" onclick="selectEmailTemplatePreset('creator')">Affiliate Creator Pitch</button>
+        <button type="button" class="quick-pill" data-preset="hustler" onclick="selectEmailTemplatePreset('hustler')">Recruit a Hustler (Pro)</button>
+        <button type="button" class="quick-pill" data-preset="customer" onclick="selectEmailTemplatePreset('customer')">Homeowner / Customer Reply</button>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
         <div class="form-group">
-          <label for="tpl-brand-name">Your Brand / Company</label>
+          <label for="tpl-brand-name">Your Brand / Platform</label>
           <input type="text" id="tpl-brand-name" oninput="renderEmailDraftPreview()" />
         </div>
         <div class="form-group">
-          <label for="tpl-commission">Affiliate Offer</label>
+          <label for="tpl-commission">Key Offer / Hook</label>
           <input type="text" id="tpl-commission" oninput="renderEmailDraftPreview()" />
         </div>
         <div class="form-group">
-          <label for="tpl-sender-name">Your Name / Title</label>
+          <label for="tpl-sender-name">Your Name / Sign-Off</label>
           <input type="text" id="tpl-sender-name" oninput="renderEmailDraftPreview()" />
         </div>
       </div>
@@ -744,6 +750,6 @@
     </div>
   </div>
 
-  <script src="./static/app.js?v=34"></script>
+  <script src="./static/app.js?v=35"></script>
 </body>
 </html>

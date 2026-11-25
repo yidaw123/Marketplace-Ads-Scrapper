@@ -14,7 +14,7 @@ USER_AGENT = (
 
 # Map Canadian postal/address mentions to (city_region, province)
 KIJIJI_LOCATION_MAP: List[Tuple[str, str, str]] = [
-    (r"\b(toronto|scarborough|etobicoke|north york|mississauga|brampton|markham|vaughan|richmond hill|oakville|pickering|ajax|oshawa|gta)\b", "Toronto / GTA, ON", "Ontario"),
+    (r"\b(toronto|scarborough|etobicoke|north york|mississauga|brampton|caledon|georgetown|halton hills|milton|markham|vaughan|richmond hill|aurora|newmarket|oakville|pickering|ajax|oshawa|gta)\b", "Toronto / GTA, ON", "Ontario"),
     (r"\b(ottawa|kanata|nepean|orleans|gatineau)\b", "Ottawa, ON", "Ontario"),
     (r"\b(hamilton|burlington|stoney creek|ancaster|dundas|grimsby|brantford|st\.?\s*catharines|niagara)\b", "Hamilton / Burlington, ON", "Ontario"),
     (r"\b(kitchener|waterloo|cambridge|guelph)\b", "Kitchener / Waterloo, ON", "Ontario"),
@@ -88,6 +88,8 @@ def scrape_kijiji_canada(queries: List[str], max_per_query: int = 20) -> List[Di
 
     wanted_terms = [
         "handyman",
+        "house cleaning",
+        "window cleaning",
         "plumber",
         "carpenter",
         "electrician",
@@ -95,6 +97,9 @@ def scrape_kijiji_canada(queries: List[str], max_per_query: int = 20) -> List[Di
         "drywall",
         "fence repair",
         "yard work",
+        "snow removal",
+        "junk removal",
+        "moving help",
         "roof repair",
     ]
 
@@ -142,8 +147,8 @@ def scrape_kijiji_canada(queries: List[str], max_per_query: int = 20) -> List[Di
                 "num_comments": 0,
             }
 
-    # 2. Scrape general Kijiji "handyman needed" / "plumber needed" across Canada
-    for direct_q in ["handyman-needed", "plumber-needed", "carpenter-needed"]:
+    # 2. Scrape general Kijiji "handyman needed" / "cleaner needed" / "mover needed" across Canada
+    for direct_q in ["handyman-needed", "cleaner-needed", "mover-needed", "plumber-needed", "carpenter-needed"]:
         url = f"https://www.kijiji.ca/b-canada/{direct_q}/k0l0"
         listings = _fetch_kijiji_listings(url)
         for item in listings[:15]:

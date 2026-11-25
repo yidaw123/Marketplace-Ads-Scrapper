@@ -30,6 +30,9 @@ CA51_CATEGORIES: List[Tuple[str, str, str]] = [
     ("heating-cooling-ventilating", "HVAC & Heating", "Appliance & HVAC Repair"),
     ("construction-renovation", "Renovation & Handyman", "General Handyman & Odd Jobs"),
     ("basement-construction-repair", "Basement Repair", "General Handyman & Odd Jobs"),
+    ("cleaning-services", "House & Carpet Cleaning", "Cleaning & Home Care"),
+    ("duct-cleaning", "Air Duct Cleaning", "Cleaning & Home Care"),
+    ("moving-services", "Moving & Delivery", "Moving, Hauling & Junk Removal"),
 ]
 
 GTA_ZH_AREA_MAP: List[Tuple[str, str]] = [
@@ -84,6 +87,14 @@ ZH_GLOSSARY: List[Tuple[str, str]] = [
     ("暖炉", "furnace hvac repair"),
     ("空调", "ac air conditioner repair"),
     ("装修", "handyman home repair"),
+    ("清洁", "house cleaning service"),
+    ("保洁", "house cleaning maid"),
+    ("洗地毯", "carpet cleaning"),
+    ("洗窗", "window cleaning"),
+    ("风管", "duct cleaning"),
+    ("搬家", "moving service movers"),
+    ("搬运", "moving help hauling"),
+    ("清垃圾", "junk removal"),
 ]
 
 

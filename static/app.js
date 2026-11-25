@@ -10,6 +10,7 @@ let ratioViewLevel = "task"; // 'task' or 'trade'
 let ratioDemandType = "total"; // 'total' or 'hiring'
 const WORK_TYPE_COLORS = {
   "All Demand": "#60a5fa",
+  "Cleaning & Home Care": "#22d3ee",
   "Plumbing & Drain": "#38bdf8",
   "Electrical & Lighting": "#fbbf24",
   "Yardwork & Landscaping": "#34d399",
@@ -19,6 +20,8 @@ const WORK_TYPE_COLORS = {
   "Roofing, Siding & Gutters": "#14b8a6",
   "Flooring & Tile": "#818cf8",
   "Appliance & HVAC Repair": "#fb7185",
+  "Moving, Hauling & Junk Removal": "#f59e0b",
+  "Auto, Detailing & BBQ Service": "#ef4444",
   "General Handyman & Odd Jobs": "#94a3b8",
 };
 
@@ -1858,11 +1861,22 @@ function renderPostsPage() {
       ? `<span style="font-size:0.72rem;color:#fb7185;" title="Estimated removal timestamp (detected missing during scrape)">&middot; Removed ~${esc(deletedDateStr)}</span>`
       : "";
 
+    const contactChips = [];
+    if (p.contact_name) contactChips.push(`<span>&#128100; ${esc(p.contact_name)}</span>`);
+    if (p.phone) contactChips.push(`<a href="tel:${esc(p.phone)}" style="color:#5eead4;text-decoration:none;font-weight:600;">&#128222; ${esc(p.phone)}</a>`);
+    if (p.email) contactChips.push(`<a href="mailto:${esc(p.email)}" style="color:#34d399;text-decoration:none;font-weight:600;">&#9993; ${esc(p.email)}</a>`);
+    if (p.website) contactChips.push(`<a href="${esc(safeUrl(p.website))}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa;text-decoration:none;">&#127760; Site</a>`);
+    const contactRowHtml = contactChips.length
+      ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;font-size:0.76rem;color:var(--text-secondary);">${contactChips.join("")}</div>`
+      : "";
+    const canPitchPost = p.intent_type === "service_provider_ad" || p.intent_type === "customer_hiring" || p.intent_type === "diy_help_needed";
+
     return `
       <tr>
         <td>
           <a class="post-title" href="${esc(safeUrl(p.url))}" target="_blank" rel="noopener noreferrer">${esc(p.title)}</a>
           ${bodySnippet ? `<div class="post-body">${esc(bodySnippet)}</div>` : ""}
+          ${contactRowHtml}
         </td>
         <td>
           <div><span class="badge b-cat">${esc(p.primary_category)}</span></div>
@@ -1882,7 +1896,10 @@ function renderPostsPage() {
           </div>
         </td>
         <td style="text-align:right;">
-          <a class="btn" style="padding:6px 14px;font-size:0.8rem;" href="${esc(safeUrl(p.url))}" target="_blank" rel="noopener noreferrer">Link</a>
+          <div style="display:inline-flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+            ${canPitchPost ? `<button type="button" class="email-copy-btn" style="padding:6px 10px;font-size:0.76rem;" data-post-id="${esc(p.external_id)}" onclick="openEmailDraftForPost(this.dataset.postId)">Pitch HustleOn</button>` : ""}
+            <a class="btn" style="padding:6px 14px;font-size:0.8rem;" href="${esc(safeUrl(p.url))}" target="_blank" rel="noopener noreferrer">Link</a>
+          </div>
         </td>
       </tr>
     `;
@@ -3216,7 +3233,7 @@ async function toggleCreatorContacted(creatorId, forceState = null) {
 
 function onMailtoDraftClick() {
   const autoBox = document.getElementById("draft-auto-contacted");
-  if (activeDraftCreator && (!autoBox || autoBox.checked)) {
+  if (activeDraftCreator && !activeDraftCreator._isPost && activeDraftCreator.creator_id && (!autoBox || autoBox.checked)) {
     toggleCreatorContacted(activeDraftCreator.creator_id, true);
   }
 }
@@ -3272,30 +3289,93 @@ function handleExportCreatorsCsv(evt) {
   _downloadCsv("diy_affiliate_creators.csv", headers, rowArrays);
 }
 
-// ==================== Affiliate Outreach Email Template Modal ====================
+// ==================== HustleOn Outreach Email Template Modal ====================
 const AFFILIATE_TEMPLATE_STORAGE_KEY = "diy_affiliate_email_template_v1";
-const DEFAULT_AFFILIATE_TEMPLATE = {
-  brand: "Our Home Services Marketplace",
-  commission: "20% recurring commission on booked home service jobs",
-  sender: "Partnerships Team",
-  subject: "Affiliate Partnership Idea for {{creator_name}} ({{trade_category}})",
-  body:
-    "Hi {{creator_name}},\n\n" +
-    "I've been following your {{trade_category}} videos — especially your tips on {{task_category}} — and love how clearly you help homeowners tackle projects.\n\n" +
-    "When viewers realize a project is bigger than a weekend DIY fix, {{your_brand}} matches them with vetted local pros. We'd love to invite you into our creator affiliate program offering {{commission_offer}} on every homeowner booking from your audience.\n\n" +
-    "Would you be open to a quick chat or me sending over partner details this week?\n\n" +
-    "Best regards,\n{{sender_name}}\n{{your_brand}}",
+const HUSTLEON_PRESETS_STORAGE_KEY = "hustleon_outreach_templates_v1";
+
+const HUSTLEON_TEMPLATE_PRESETS = {
+  creator: {
+    brand: "HustleOn (hustleon.ca)",
+    commission: "affiliate commissions on booked GTA & Canadian home service jobs",
+    sender: "HustleOn Partnerships Team",
+    subject: "HustleOn.ca x {{creator_name}} — Partner Idea ({{trade_category}})",
+    body:
+      "Hi {{creator_name}},\n\n" +
+      "I've been following your {{trade_category}} content — especially your videos on {{task_category}} — and love how clearly you help homeowners tackle projects.\n\n" +
+      "We're scaling {{your_brand}}, a Canadian local services marketplace launching across the Greater Toronto Area & Ontario where homeowners get upfront quotes for cleaning, lawn care, painting, electrical, handyman work & more, and only release payment once the job is done.\n\n" +
+      "When a project is bigger than a quick DIY fix, we'd love to partner with you offering {{commission_offer}} whenever viewers book a local Hustler or sign up to offer their own skills.\n\n" +
+      "Open to a quick chat or me sending over partner details this week?\n\n" +
+      "Best,\n{{sender_name}}\nhttps://www.hustleon.ca/",
+  },
+  hustler: {
+    brand: "HustleOn (hustleon.ca)",
+    commission: "$0 listing fees & $0 pay-per-lead charges (you only pay when a job completes)",
+    sender: "HustleOn Onboarding Team",
+    subject: "Free {{trade_category}} Bookings in {{location}} on HustleOn.ca (No Lead Fees)",
+    body:
+      "Hi {{creator_name}},\n\n" +
+      "I came across your {{trade_category}} services ({{task_category}}) in {{location}} and wanted to invite you onto {{your_brand}}.\n\n" +
+      "Unlike lead-generation sites that charge you upfront for cold leads, HustleOn offers {{commission_offer}}:\n" +
+      "• Free to list — set your own rates, service tiers, and schedule\n" +
+      "• Customers pay upfront at booking (no chasing cash or unpaid invoices)\n" +
+      "• Direct payouts straight to your linked PayPal account\n\n" +
+      "You can publish your service profile in ~3 minutes at https://www.hustleon.ca/join?as=hustler — happy to help feature your listing in {{location}}!\n\n" +
+      "Best,\n{{sender_name}}\nhttps://www.hustleon.ca/",
+  },
+  customer: {
+    brand: "HustleOn (hustleon.ca)",
+    commission: "upfront quotes & protected payment released only after completion",
+    sender: "HustleOn Local Support",
+    subject: "Local help for {{task_category}} in {{location}} — HustleOn.ca",
+    body:
+      "Hi {{creator_name}},\n\n" +
+      "Saw you were looking for {{trade_category}} help ({{task_category}}) around {{location}}.\n\n" +
+      "You can compare local Hustlers and book directly on {{your_brand}} with {{commission_offer}} — your payment is held safely until the job is finished with photo proof.\n\n" +
+      "Browse local pros or request a quote here: https://www.hustleon.ca/\n\n" +
+      "Best,\n{{sender_name}}",
+  },
 };
+
+const DEFAULT_AFFILIATE_TEMPLATE = HUSTLEON_TEMPLATE_PRESETS.creator;
+let activeTemplatePreset = "creator";
 let activeDraftCreator = null;
 
-function _loadSavedEmailTemplate() {
+function _loadAllSavedTemplates() {
   try {
-    const raw = localStorage.getItem(AFFILIATE_TEMPLATE_STORAGE_KEY);
-    if (!raw) return { ...DEFAULT_AFFILIATE_TEMPLATE };
-    return { ...DEFAULT_AFFILIATE_TEMPLATE, ...JSON.parse(raw) };
-  } catch (_) {
-    return { ...DEFAULT_AFFILIATE_TEMPLATE };
-  }
+    const raw = localStorage.getItem(HUSTLEON_PRESETS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        creator: { ...HUSTLEON_TEMPLATE_PRESETS.creator, ...(parsed.creator || {}) },
+        hustler: { ...HUSTLEON_TEMPLATE_PRESETS.hustler, ...(parsed.hustler || {}) },
+        customer: { ...HUSTLEON_TEMPLATE_PRESETS.customer, ...(parsed.customer || {}) },
+      };
+    }
+  } catch (_) {}
+  return {
+    creator: { ...HUSTLEON_TEMPLATE_PRESETS.creator },
+    hustler: { ...HUSTLEON_TEMPLATE_PRESETS.hustler },
+    customer: { ...HUSTLEON_TEMPLATE_PRESETS.customer },
+  };
+}
+
+function _loadSavedEmailTemplate(preset = activeTemplatePreset) {
+  const all = _loadAllSavedTemplates();
+  return all[preset] || { ...HUSTLEON_TEMPLATE_PRESETS.creator };
+}
+
+function _syncPresetStripUI() {
+  document.querySelectorAll("#tpl-preset-strip .quick-pill").forEach(btn => {
+    btn.classList.toggle("active", btn.getAttribute("data-preset") === activeTemplatePreset);
+  });
+}
+
+function selectEmailTemplatePreset(preset) {
+  if (!HUSTLEON_TEMPLATE_PRESETS[preset]) return;
+  activeTemplatePreset = preset;
+  _syncPresetStripUI();
+  _populateTemplateInputs(_loadSavedEmailTemplate(preset));
+  renderEmailDraftPreview();
 }
 
 function _populateTemplateInputs(tpl) {
@@ -3311,23 +3391,47 @@ function _populateTemplateInputs(tpl) {
 }
 
 function openEmailDraftForCreator(creatorId) {
+  activeTemplatePreset = "creator";
   const creator = (allFilteredCreators || []).find(c => String(c.creator_id) === String(creatorId)) || null;
-  openEmailTemplateModal(creator);
+  openEmailTemplateModal(creator, "creator");
 }
 
-function openEmailTemplateModal(creator = null) {
+function openEmailDraftForPost(externalId) {
+  const post = (allFilteredPosts || []).find(p => String(p.external_id) === String(externalId));
+  if (!post) return;
+  const preset = post.intent_type === "service_provider_ad" ? "hustler" : "customer";
+  const pseudoTarget = {
+    _isPost: true,
+    name: post.contact_name || (post.author && !post.author.includes("_") ? post.author : "there"),
+    primary_category: post.primary_category || "Home Services",
+    sub_service: post.sub_service || post.primary_category || "local service",
+    city: post.city_region || "the GTA",
+    province_state: "",
+    country: post.country === "Canada" || post.country === "United States" ? post.country : "",
+    business_email: post.email || "",
+  };
+  openEmailTemplateModal(pseudoTarget, preset);
+}
+
+function openEmailTemplateModal(creator = null, preset = null) {
+  if (preset && HUSTLEON_TEMPLATE_PRESETS[preset]) {
+    activeTemplatePreset = preset;
+  } else if (!creator && activeMainTab === "listings") {
+    activeTemplatePreset = "hustler";
+  }
   activeDraftCreator = creator;
-  _populateTemplateInputs(_loadSavedEmailTemplate());
+  _syncPresetStripUI();
+  _populateTemplateInputs(_loadSavedEmailTemplate(activeTemplatePreset));
   const titleEl = document.getElementById("email-modal-title");
   const recEl = document.getElementById("email-modal-recipient");
   if (titleEl) {
-    titleEl.textContent = creator ? `Draft Outreach Email: ${creator.name}` : "Affiliate Outreach Email Template";
+    titleEl.textContent = creator ? `Draft HustleOn Pitch: ${creator.name}` : "HustleOn Outreach Email Templates";
   }
   if (recEl) {
     const em = creator ? String(creator.business_email || "").split(",")[0].trim() : "";
     recEl.textContent = creator
-      ? (em ? `Drafting personalized email for ${creator.name} (${em})` : `Drafting DM / outreach copy for ${creator.name} (no direct email listed)`)
-      : "Edit merge tags & copy below — saved automatically for all creator rows";
+      ? (em ? `Drafting personalized email to ${creator.name} (${em})` : `Drafting outreach message for ${creator.name} (copy to send via listing / DM / phone)`)
+      : "Switch presets above & customize — saved automatically per template type";
   }
   renderEmailDraftPreview();
   const modal = document.getElementById("email-template-modal");
@@ -3341,22 +3445,23 @@ function closeEmailTemplateModal() {
 
 function _applyEmailMergeTags(text, creator, tpl) {
   const sample = creator || (allFilteredCreators && allFilteredCreators[0]) || {
-    name: "Creator Name",
-    primary_category: "Carpentry, Doors & Windows",
-    sub_service: "Door & trim repair",
-    city: "Austin",
-    province_state: "Texas",
-    country: "United States",
+    name: "Alex",
+    primary_category: "Cleaning & Home Care",
+    sub_service: "House & Deep Cleaning",
+    city: "Toronto / GTA",
+    province_state: "Ontario",
+    country: "Canada",
   };
-  const loc = formatCreatorLocationText(sample) || "your area";
+  const loc = (sample._isPost ? sample.city : formatCreatorLocationText(sample)) || "the GTA";
+  const presetDefaults = HUSTLEON_TEMPLATE_PRESETS[activeTemplatePreset] || HUSTLEON_TEMPLATE_PRESETS.creator;
   return String(text || "")
     .replaceAll("{{creator_name}}", sample.name || "there")
-    .replaceAll("{{trade_category}}", sample.primary_category || "DIY & Home Improvement")
-    .replaceAll("{{task_category}}", sample.sub_service || "home repair projects")
+    .replaceAll("{{trade_category}}", sample.primary_category || "Home Services")
+    .replaceAll("{{task_category}}", sample.sub_service || "local services")
     .replaceAll("{{location}}", loc)
-    .replaceAll("{{your_brand}}", tpl.brand || DEFAULT_AFFILIATE_TEMPLATE.brand)
-    .replaceAll("{{commission_offer}}", tpl.commission || DEFAULT_AFFILIATE_TEMPLATE.commission)
-    .replaceAll("{{sender_name}}", tpl.sender || DEFAULT_AFFILIATE_TEMPLATE.sender);
+    .replaceAll("{{your_brand}}", tpl.brand || presetDefaults.brand)
+    .replaceAll("{{commission_offer}}", tpl.commission || presetDefaults.commission)
+    .replaceAll("{{sender_name}}", tpl.sender || presetDefaults.sender);
 }
 
 function _readTemplateInputs() {
@@ -3411,9 +3516,10 @@ function insertTemplateTag(tag) {
 }
 
 function saveEmailTemplate() {
-  const tpl = _readTemplateInputs();
+  const all = _loadAllSavedTemplates();
+  all[activeTemplatePreset] = _readTemplateInputs();
   try {
-    localStorage.setItem(AFFILIATE_TEMPLATE_STORAGE_KEY, JSON.stringify(tpl));
+    localStorage.setItem(HUSTLEON_PRESETS_STORAGE_KEY, JSON.stringify(all));
   } catch (_) {}
   const btn = document.getElementById("tpl-save-btn");
   if (btn) {
@@ -3424,10 +3530,12 @@ function saveEmailTemplate() {
 }
 
 function resetEmailTemplate() {
+  const all = _loadAllSavedTemplates();
+  all[activeTemplatePreset] = { ...(HUSTLEON_TEMPLATE_PRESETS[activeTemplatePreset] || HUSTLEON_TEMPLATE_PRESETS.creator) };
   try {
-    localStorage.removeItem(AFFILIATE_TEMPLATE_STORAGE_KEY);
+    localStorage.setItem(HUSTLEON_PRESETS_STORAGE_KEY, JSON.stringify(all));
   } catch (_) {}
-  _populateTemplateInputs({ ...DEFAULT_AFFILIATE_TEMPLATE });
+  _populateTemplateInputs(all[activeTemplatePreset]);
   renderEmailDraftPreview();
 }
 

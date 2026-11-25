@@ -15,7 +15,7 @@ DEFAULT_REGIONS = [
         "province": "Ontario",
         "country": "Canada",
         "craigslist_subdomain": "toronto",
-        "subreddits": ["askTO", "toronto", "GTA", "mississauga", "Brampton"],
+        "subreddits": ["askTO", "toronto", "GTA", "mississauga", "Brampton", "Oakville", "Vaughan", "Markham", "HaltonHills"],
         "enabled": True,
     },
     {
@@ -45,8 +45,8 @@ DEFAULT_REGIONS = [
         "province": "Ontario",
         "country": "Canada",
         "craigslist_subdomain": "kitchener",
-        "subreddits": ["waterloo", "kitchener"],
-        "enabled": False,
+        "subreddits": ["waterloo", "kitchener", "guelph"],
+        "enabled": True,
     },
     {
         "id": "london_on",
@@ -56,7 +56,7 @@ DEFAULT_REGIONS = [
         "country": "Canada",
         "craigslist_subdomain": "londonon",
         "subreddits": ["londonontario"],
-        "enabled": False,
+        "enabled": True,
     },
     # --- Canada: British Columbia ---
     {
@@ -237,17 +237,25 @@ DEFAULT_NATIONAL_SUBREDDITS = [
 
 DEFAULT_SEARCH_KEYWORDS = [
     "handyman",
-    "plumber",
-    "electrician",
-    "drywall",
+    "house cleaning",
+    "window cleaning",
+    "carpet cleaning",
+    "lawn care",
     "yard work",
     "landscaping",
-    "carpenter",
+    "snow removal",
+    "plumber",
+    "electrician",
     "painter",
+    "drywall",
+    "carpenter",
     "gutter",
     "mount tv",
     "furniture assembly",
     "fence repair",
+    "junk removal",
+    "moving help",
+    "auto detailing",
 ]
 
 
@@ -438,12 +446,28 @@ def init_db() -> None:
             "INSERT INTO settings (key, value) VALUES (?, ?)",
             ("national_subreddits", json.dumps(DEFAULT_NATIONAL_SUBREDDITS)),
         )
-    cur.execute("SELECT COUNT(*) as cnt FROM settings WHERE key = 'search_keywords'")
-    if cur.fetchone()["cnt"] == 0:
+    cur.execute("SELECT value FROM settings WHERE key = 'search_keywords'")
+    kw_row = cur.fetchone()
+    if not kw_row:
         cur.execute(
             "INSERT INTO settings (key, value) VALUES (?, ?)",
             ("search_keywords", json.dumps(DEFAULT_SEARCH_KEYWORDS)),
         )
+    else:
+        try:
+            existing_kws = json.loads(kw_row["value"])
+            if isinstance(existing_kws, list):
+                merged_kws = list(existing_kws)
+                for kw in DEFAULT_SEARCH_KEYWORDS:
+                    if kw not in merged_kws:
+                        merged_kws.append(kw)
+                if merged_kws != existing_kws:
+                    cur.execute(
+                        "UPDATE settings SET value = ? WHERE key = 'search_keywords'",
+                        (json.dumps(merged_kws),),
+                    )
+        except Exception:
+            pass
     cur.execute("SELECT COUNT(*) as cnt FROM settings WHERE key = 'llm_config'")
     if cur.fetchone()["cnt"] == 0:
         cur.execute(

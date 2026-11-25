@@ -298,6 +298,24 @@ class CreatorClassificationTests(unittest.TestCase):
         self.assertEqual(_classify_creator_links(["https://gopjn.com/t/1234", "https://hvacdirect.com"])["website"], "")
         self.assertEqual(_extract_clean_emails("info@hvacdirect.com"), [])
 
+    def test_hustleon_cleaning_moving_and_detailing_categories(self):
+        c1 = classify("Looking for a house cleaner in Mississauga for a move-out deep clean", source="r/mississauga")
+        self.assertEqual(c1["intent_type"], "customer_hiring")
+        self.assertEqual(c1["primary_category"], "Cleaning & Home Care")
+        self.assertEqual(c1["sub_service"], "House & Deep Cleaning")
+
+        c2 = classify("Need junk removal / furniture disposal in Brampton this weekend", source="r/Brampton")
+        self.assertEqual(c2["primary_category"], "Moving, Hauling & Junk Removal")
+        self.assertEqual(c2["sub_service"], "Junk & Rubbish Removal")
+
+        c3 = classify(
+            "GTA Mobile Car Detailing & BBQ Cleaning — free estimates, call 416-555-0199",
+            platform="kijiji",
+            source="kijiji.ca",
+        )
+        self.assertEqual(c3["intent_type"], "service_provider_ad")
+        self.assertEqual(c3["primary_category"], "Auto, Detailing & BBQ Service")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
